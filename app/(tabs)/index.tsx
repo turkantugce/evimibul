@@ -1,98 +1,238 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
-
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+import { collection, limit, onSnapshot, orderBy, query, where } from 'firebase/firestore';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  FlatList,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
+} from 'react-native';
+import ListingCard from '../../components/ListingCard';
+import ListingModal from '../../components/ListingModal';
+import { useAuthContext } from '../../contexts/AuthContext';
+import { db } from '../../firebase';
+import { IListing } from '../../types';
 
 export default function HomeScreen() {
-  return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+  const [allListings, setAllListings] = useState<IListing[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [selectedListing, setSelectedListing] = useState<IListing | null>(null);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [speciesFilter, setSpeciesFilter] = useState('');
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+  const { user } = useAuthContext();
+
+  useEffect(() => {
+    // Real-time listener
+    const unsubscribe = setupListingsListener();
+    return () => unsubscribe();
+  }, []);
+
+  const setupListingsListener = () => {
+    try {
+      setLoading(true);
+      
+      // Sadece status ve orderBy kullan - species filtresini client-side yapacağız
+      const q = query(
+        collection(db, 'listings'),
+        where('status', '==', 'active'),
+        orderBy('createdAt', 'desc'),
+        limit(50)
+      );
+
+      const unsubscribe = onSnapshot(q, 
+        (querySnapshot) => {
+          const listingsData: IListing[] = [];
+          
+          querySnapshot.forEach((doc) => {
+            const data = doc.data();
+            listingsData.push({ 
+              id: doc.id, 
+              title: data.title || '',
+              species: data.species || '',
+              breed: data.breed || '',
+              age: data.age || '',
+              gender: data.gender || '',
+              city: data.city || '',
+              district: data.district || '',
+              description: data.description || '',
+              photos: data.photos || [],
+              vaccinated: data.vaccinated || false,
+              neutered: data.neutered || false,
+              status: data.status || 'active',
+              ownerId: data.ownerId || '',
+              createdAt: data.createdAt,
+              updatedAt: data.updatedAt
+            } as IListing);
+          });
+
+          console.log(`${listingsData.length} ilan yüklendi`);
+          setAllListings(listingsData);
+          setLoading(false);
+        },
+        (error) => {
+          console.error('Listener hatası:', error);
+          setLoading(false);
+        }
+      );
+
+      return unsubscribe;
+    } catch (error) {
+      console.error('Listener kurulum hatası:', error);
+      setLoading(false);
+      return () => {}; // boş unsubscribe
+    }
+  };
+
+  // Client-side filtreleme
+  const filteredListings = useMemo(() => {
+    let filtered = allListings;
+
+    // Tür filtreleme
+    if (speciesFilter) {
+      filtered = filtered.filter(listing => 
+        listing.species.toLowerCase() === speciesFilter.toLowerCase()
+      );
+    }
+
+    // Arama filtreleme
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(listing => 
+        listing.title.toLowerCase().includes(query) ||
+        listing.species.toLowerCase().includes(query) ||
+        listing.breed.toLowerCase().includes(query) ||
+        listing.city.toLowerCase().includes(query) ||
+        listing.description.toLowerCase().includes(query)
+      );
+    }
+
+    return filtered;
+  }, [allListings, speciesFilter, searchQuery]);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    // Listener otomatik güncelleyecek, sadece loading state'i göster
+    setTimeout(() => setRefreshing(false), 1000);
+  };
+
+  const handleListingPress = (listing: IListing) => {
+    setSelectedListing(listing);
+    setModalVisible(true);
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.centered}>
+        <ActivityIndicator size="large" color="#007AFF" />
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.container}>
+      {/* Arama ve Filtre */}
+      <View style={styles.filterContainer}>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="İlanlarda ara..."
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+        />
+        <View style={styles.speciesFilter}>
+          <TouchableOpacity 
+            style={[styles.filterButton, speciesFilter === '' && styles.filterButtonActive]}
+            onPress={() => setSpeciesFilter('')}
+          >
+            <Text style={[styles.filterText, speciesFilter === '' && styles.filterTextActive]}>
+              Tümü
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.filterButton, speciesFilter === 'kedi' && styles.filterButtonActive]}
+            onPress={() => setSpeciesFilter('kedi')}
+          >
+            <Text style={[styles.filterText, speciesFilter === 'kedi' && styles.filterTextActive]}>
+              Kediler
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.filterButton, speciesFilter === 'köpek' && styles.filterButtonActive]}
+            onPress={() => setSpeciesFilter('köpek')}
+          >
+            <Text style={[styles.filterText, speciesFilter === 'köpek' && styles.filterTextActive]}>
+              Köpekler
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* İlan Listesi */}
+      <FlatList
+        data={filteredListings}
+        renderItem={({ item }) => (
+          <ListingCard listing={item} onPress={handleListingPress} />
+        )}
+        keyExtractor={(item) => item.id}
+        refreshing={refreshing}
+        onRefresh={handleRefresh}
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>
+              {searchQuery || speciesFilter 
+                ? 'Arama kriterlerine uygun ilan bulunamadı' 
+                : 'Henüz ilan bulunmuyor'
+              }
+            </Text>
+          </View>
+        }
+      />
+
+      {/* İlan Detay Modal */}
+      <ListingModal
+        visible={modalVisible}
+        listing={selectedListing}
+        onClose={() => setModalVisible(false)}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  container: { flex: 1, backgroundColor: '#f5f5f5' },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  filterContainer: { padding: 16, backgroundColor: 'white' },
+  searchInput: {
+    backgroundColor: '#f8f8f8',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#e0e0e0'
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+  speciesFilter: { flexDirection: 'row', justifyContent: 'space-around' },
+  filterButton: { 
+    paddingHorizontal: 16, 
+    paddingVertical: 8, 
+    borderRadius: 20,
+    backgroundColor: '#f8f8f8'
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  filterButtonActive: { backgroundColor: '#007AFF' },
+  filterText: { color: '#666', fontWeight: '500' },
+  filterTextActive: { color: 'white' },
+  emptyContainer: { 
+    flex: 1, 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    padding: 40 
   },
+  emptyText: { 
+    fontSize: 16, 
+    color: '#666', 
+    textAlign: 'center' 
+  }
 });
