@@ -1,15 +1,16 @@
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Alert,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from 'react-native';
 import { useAuthContext } from '../../contexts/AuthContext';
+import { useTheme } from '../../contexts/ThemeContext';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -17,6 +18,7 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   
   const { signIn } = useAuthContext();
+  const { colors } = useTheme();
   const router = useRouter();
 
   const handleLogin = async () => {
@@ -37,6 +39,53 @@ export default function LoginScreen() {
     }
   };
 
+  const styles = StyleSheet.create({
+    container: {
+      flex: 1,
+      justifyContent: 'center',
+      padding: 20,
+      backgroundColor: colors.background,
+    },
+    title: {
+      fontSize: 32,
+      fontWeight: 'bold',
+      textAlign: 'center',
+      marginBottom: 40,
+      color: colors.text,
+    },
+    input: {
+      backgroundColor: colors.inputBackground,
+      padding: 15,
+      borderRadius: 10,
+      marginBottom: 15,
+      borderWidth: 1,
+      borderColor: colors.border,
+      color: colors.text,
+      fontSize: 16,
+    },
+    button: {
+      backgroundColor: colors.primary,
+      padding: 15,
+      borderRadius: 10,
+      alignItems: 'center',
+      marginTop: 10,
+    },
+    buttonText: {
+      color: colors.card,
+      fontSize: 18,
+      fontWeight: '600',
+    },
+    linkButton: {
+      marginTop: 20,
+      alignItems: 'center',
+    },
+    linkText: {
+      color: colors.primary,
+      fontSize: 16,
+      fontWeight: '500',
+    },
+  });
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Giriş Yap</Text>
@@ -44,6 +93,7 @@ export default function LoginScreen() {
       <TextInput
         style={styles.input}
         placeholder="E-posta"
+        placeholderTextColor={colors.secondaryText}
         value={email}
         onChangeText={setEmail}
         autoCapitalize="none"
@@ -53,6 +103,7 @@ export default function LoginScreen() {
       <TextInput
         style={styles.input}
         placeholder="Şifre"
+        placeholderTextColor={colors.secondaryText}
         value={password}
         onChangeText={setPassword}
         secureTextEntry
@@ -64,7 +115,7 @@ export default function LoginScreen() {
         disabled={loading}
       >
         {loading ? (
-          <ActivityIndicator color="#fff" />
+          <ActivityIndicator color={colors.card} />
         ) : (
           <Text style={styles.buttonText}>Giriş Yap</Text>
         )}
@@ -79,47 +130,3 @@ export default function LoginScreen() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    padding: 20,
-    backgroundColor: '#f5f5f5',
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: 40,
-    color: '#333',
-  },
-  input: {
-    backgroundColor: 'white',
-    padding: 15,
-    borderRadius: 10,
-    marginBottom: 15,
-    borderWidth: 1,
-    borderColor: '#ddd',
-  },
-  button: {
-    backgroundColor: '#007AFF',
-    padding: 15,
-    borderRadius: 10,
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  buttonText: {
-    color: 'white',
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  linkButton: {
-    marginTop: 20,
-    alignItems: 'center',
-  },
-  linkText: {
-    color: '#007AFF',
-    fontSize: 16,
-  },
-});

@@ -10,6 +10,7 @@ import {
   View
 } from 'react-native';
 import { useAuthContext } from '../../contexts/AuthContext';
+import { useTheme } from '../../contexts/ThemeContext';
 
 export default function SignupScreen() {
   const [email, setEmail] = useState('');
@@ -19,6 +20,7 @@ export default function SignupScreen() {
   const [loading, setLoading] = useState(false);
   
   const { signUp } = useAuthContext();
+  const { colors } = useTheme();
   const router = useRouter();
 
   const handleSignup = async () => {
@@ -49,6 +51,53 @@ export default function SignupScreen() {
     }
   };
 
+  const styles = StyleSheet.create({
+    container: {
+      flex: 1,
+      justifyContent: 'center',
+      padding: 20,
+      backgroundColor: colors.background,
+    },
+    title: {
+      fontSize: 32,
+      fontWeight: 'bold',
+      textAlign: 'center',
+      marginBottom: 40,
+      color: colors.text,
+    },
+    input: {
+      backgroundColor: colors.inputBackground,
+      padding: 15,
+      borderRadius: 10,
+      marginBottom: 15,
+      borderWidth: 1,
+      borderColor: colors.border,
+      color: colors.text,
+      fontSize: 16,
+    },
+    button: {
+      backgroundColor: colors.success,
+      padding: 15,
+      borderRadius: 10,
+      alignItems: 'center',
+      marginTop: 10,
+    },
+    buttonText: {
+      color: colors.card,
+      fontSize: 18,
+      fontWeight: '600',
+    },
+    linkButton: {
+      marginTop: 20,
+      alignItems: 'center',
+    },
+    linkText: {
+      color: colors.primary,
+      fontSize: 16,
+      fontWeight: '500',
+    },
+  });
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Kayıt Ol</Text>
@@ -56,6 +105,7 @@ export default function SignupScreen() {
       <TextInput
         style={styles.input}
         placeholder="Ad Soyad *"
+        placeholderTextColor={colors.secondaryText}
         value={userName}
         onChangeText={setUserName}
         autoCapitalize="words"
@@ -64,6 +114,7 @@ export default function SignupScreen() {
       <TextInput
         style={styles.input}
         placeholder="E-posta *"
+        placeholderTextColor={colors.secondaryText}
         value={email}
         onChangeText={setEmail}
         autoCapitalize="none"
@@ -73,6 +124,7 @@ export default function SignupScreen() {
       <TextInput
         style={styles.input}
         placeholder="Şifre *"
+        placeholderTextColor={colors.secondaryText}
         value={password}
         onChangeText={setPassword}
         secureTextEntry
@@ -81,6 +133,7 @@ export default function SignupScreen() {
       <TextInput
         style={styles.input}
         placeholder="Şifre Tekrar *"
+        placeholderTextColor={colors.secondaryText}
         value={confirmPassword}
         onChangeText={setConfirmPassword}
         secureTextEntry
@@ -92,7 +145,7 @@ export default function SignupScreen() {
         disabled={loading}
       >
         {loading ? (
-          <ActivityIndicator color="#fff" />
+          <ActivityIndicator color={colors.card} />
         ) : (
           <Text style={styles.buttonText}>Kayıt Ol</Text>
         )}
@@ -107,47 +160,3 @@ export default function SignupScreen() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    padding: 20,
-    backgroundColor: '#f5f5f5',
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: 40,
-    color: '#333',
-  },
-  input: {
-    backgroundColor: 'white',
-    padding: 15,
-    borderRadius: 10,
-    marginBottom: 15,
-    borderWidth: 1,
-    borderColor: '#ddd',
-  },
-  button: {
-    backgroundColor: '#34C759',
-    padding: 15,
-    borderRadius: 10,
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  buttonText: {
-    color: 'white',
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  linkButton: {
-    marginTop: 20,
-    alignItems: 'center',
-  },
-  linkText: {
-    color: '#007AFF',
-    fontSize: 16,
-  },
-});

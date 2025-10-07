@@ -27,14 +27,22 @@ import {
 } from 'react-native';
 import ListingCard from '../../components/ListingCard';
 import { useAuthContext } from '../../contexts/AuthContext';
+import { useTheme } from '../../contexts/ThemeContext';
 import { db, storage } from '../../firebase';
-import { IListing } from '../../types';
+import { IListing } from '../../types/types';
 
-const AVATAR_COLORS = ['#007AFF', '#34C759', '#FF9500', '#FF3B30', '#5856D6', '#AF52DE'];
+const AVATAR_COLORS = ['#795548', '#8D6E63', '#A1887F', '#BCAAA4', '#D7CCC8', '#EFEBE9'];
+
+// Özel buton renkleri
+const CUSTOM_COLORS = {
+  adopted: '#D4A574',  // Yumuşak turuncu (sahiplendirme için)
+  delete: '#8B7355',   // Haki/toprak tonu (silme için)
+};
 
 export default function ProfileScreen() {
-  const { user, userData, logout, updateUserProfile } = useAuthContext();
+  const { user, userData, updateUserProfile } = useAuthContext();
   const router = useRouter();
+  const { colors } = useTheme();
   const [activeTab, setActiveTab] = useState<'active' | 'adopted'>('active');
   const [allUserListings, setAllUserListings] = useState<IListing[]>([]);
   const [loading, setLoading] = useState(true);
@@ -46,12 +54,10 @@ export default function ProfileScreen() {
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
-  // Avatar rengi - kullanıcı adına göre sabit bir renk seç
   const avatarColor = AVATAR_COLORS[userName.length % AVATAR_COLORS.length];
 
   useEffect(() => {
     if (user && userData) {
-      console.log('📝 Profil bilgileri yükleniyor:', userData.name);
       setUserName(userData.name || user.displayName || user.email?.split('@')[0] || 'Kullanıcı');
       setUserBio(userData.bio || '');
       setUserPhone((userData as any).phone || '');
@@ -62,14 +68,9 @@ export default function ProfileScreen() {
 
   useEffect(() => {
     if (user) {
-      console.log('🔍 İlanlar listener kuruluyor...');
       const unsubscribe = setupListingsListener();
-      return () => {
-        console.log('🔒 İlanlar listener temizlendi');
-        unsubscribe();
-      };
+      return () => unsubscribe();
     } else {
-      console.log('❌ Kullanıcı yok, listener kurulmadı');
       setLoading(false);
       setAllUserListings([]);
     }
@@ -80,7 +81,6 @@ export default function ProfileScreen() {
 
     try {
       setLoading(true);
-      console.log('👤 Kullanıcı ID:', user.uid);
       
       const q = query(
         collection(db, 'listings'),
@@ -118,22 +118,19 @@ export default function ProfileScreen() {
             const timeB = b.createdAt?.toMillis?.() || 0;
             return timeB - timeA;
           });
-
-          console.log(`✅ ${listingsData.length} ilan yüklendi`);
-          console.log('İlan durumları:', listingsData.map(l => ({ id: l.id, status: l.status })));
           
           setAllUserListings(listingsData);
           setLoading(false);
         },
         (error) => {
-          console.error('❌ Listener hatası:', error);
+          console.error('Listener hatası:', error);
           setLoading(false);
         }
       );
 
       return unsubscribe;
     } catch (error) {
-      console.error('❌ Listener kurulum hatası:', error);
+      console.error('Listener kurulum hatası:', error);
       setLoading(false);
       return () => {};
     }
@@ -175,7 +172,6 @@ export default function ProfileScreen() {
       await uploadBytes(storageRef, blob);
       const downloadURL = await getDownloadURL(storageRef);
       
-      // Firestore'da güncelle
       await updateDoc(doc(db, 'users', user.uid), {
         photoURL: downloadURL,
         updatedAt: new Date()
@@ -194,17 +190,14 @@ export default function ProfileScreen() {
 
   const handleMarkAdopted = async (listingId: string) => {
     try {
-      console.log('🏠 İlan sahiplendirildi olarak işaretleniyor:', listingId);
-      
       await updateDoc(doc(db, 'listings', listingId), {
         status: 'adopted',
         updatedAt: new Date()
       });
       
-      console.log('✅ İlan durumu güncellendi');
       Alert.alert('Başarılı', 'İlan sahiplendirildi olarak işaretlendi');
     } catch (error) {
-      console.error('❌ Sahiplendirme hatası:', error);
+      console.error('Sahiplendirme hatası:', error);
       Alert.alert('Hata', 'İşlem sırasında bir hata oluştu');
     }
   };
@@ -220,11 +213,7 @@ export default function ProfileScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              console.log('🗑️ İlan siliniyor:', listing.id, 'Status:', listing.status);
-              
               if (listing.photos && listing.photos.length > 0) {
-                console.log(`📸 ${listing.photos.length} fotoğraf siliniyor`);
-                
                 for (const photoUrl of listing.photos) {
                   try {
                     const urlParts = photoUrl.split('/o/');
@@ -234,20 +223,17 @@ export default function ProfileScreen() {
                       
                       const photoRef = ref(storage, photoPath);
                       await deleteObject(photoRef);
-                      console.log('✅ Fotoğraf silindi:', photoPath);
                     }
                   } catch (photoError: any) {
-                    console.log('⚠️ Fotoğraf silme uyarısı:', photoError.message);
+                    console.log('Fotoğraf silme uyarısı:', photoError.message);
                   }
                 }
               }
               
               await deleteDoc(doc(db, 'listings', listing.id));
-              console.log('✅ İlan Firestore\'dan silindi');
-              
               Alert.alert('Başarılı', 'İlan başarıyla silindi');
             } catch (error: any) {
-              console.error('❌ İlan silme hatası:', error);
+              console.error('İlan silme hatası:', error);
               Alert.alert('Hata', 'İlan silinirken bir sorun oluştu: ' + error.message);
             }
           }
@@ -262,8 +248,6 @@ export default function ProfileScreen() {
       return;
     }
     
-    console.log('🔄 Profil güncelleniyor...');
-    
     const result = await updateUserProfile({
       name: userName,
       bio: userBio,
@@ -272,63 +256,33 @@ export default function ProfileScreen() {
     } as any);
 
     if (result.success) {
-      console.log('✅ Profil güncellendi');
       Alert.alert('Başarılı', 'Profil bilgileri güncellendi');
       setEditModalVisible(false);
     } else {
-      console.error('❌ Profil güncelleme hatası:', result.error);
       Alert.alert('Hata', result.error || 'Profil güncellenirken bir sorun oluştu');
     }
   };
 
-  const handleLogout = () => {
-    Alert.alert(
-      'Çıkış Yap',
-      'Çıkış yapmak istediğinizden emin misiniz?',
-      [
-        { text: 'İptal', style: 'cancel' },
-        { 
-          text: 'Çıkış Yap', 
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              console.log('🚪 Çıkış işlemi başlatılıyor...');
-              
-              await logout();
-              console.log('✅ Logout fonksiyonu tamamlandı');
-              
-              router.replace('/auth/login');
-              
-            } catch (error) {
-              console.error('❌ Çıkış hatası:', error);
-              Alert.alert('Hata', 'Çıkış yapılırken bir sorun oluştu');
-            }
-          }
-        }
-      ]
-    );
-  };
-
   if (!user) {
-    console.log('👋 Kullanıcı yok - login ekranı gösteriliyor');
-    
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
         <View style={styles.authContainer}>
-          <Ionicons name="paw" size={64} color="#007AFF" style={{ marginBottom: 20 }} />
-          <Text style={styles.authTitle}>Hoş Geldiniz</Text>
-          <Text style={styles.authText}>İlan eklemek ve profilinizi görüntülemek için giriş yapın</Text>
+          <Ionicons name="paw" size={64} color={colors.primary} style={{ marginBottom: 20 }} />
+          <Text style={[styles.authTitle, { color: colors.text }]}>Hoş Geldiniz</Text>
+          <Text style={[styles.authText, { color: colors.secondaryText }]}>
+            İlan eklemek ve profilinizi görüntülemek için giriş yapın
+          </Text>
           <TouchableOpacity 
-            style={styles.authButton}
+            style={[styles.authButton, { backgroundColor: colors.primary }]}
             onPress={() => router.push('/auth/login')}
           >
             <Text style={styles.authButtonText}>Giriş Yap</Text>
           </TouchableOpacity>
           <TouchableOpacity 
-            style={[styles.authButton, styles.signupButton]}
+            style={[styles.authButton, styles.signupButton, { borderColor: colors.primary }]}
             onPress={() => router.push('/auth/signup')}
           >
-            <Text style={[styles.authButtonText, styles.signupButtonText]}>Kayıt Ol</Text>
+            <Text style={[styles.authButtonText, { color: colors.primary }]}>Kayıt Ol</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -338,13 +292,19 @@ export default function ProfileScreen() {
   const activeCount = allUserListings.filter(l => l.status === 'active').length;
   const adoptedCount = allUserListings.filter(l => l.status === 'adopted').length;
 
-  console.log(`📊 İstatistikler - Aktif: ${activeCount}, Sahiplendirilen: ${adoptedCount}`);
-
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      {/* Ayarlar Butonu - Sağ Üst Köşe */}
+      <TouchableOpacity 
+        style={[styles.settingsButton, { backgroundColor: colors.card }]}
+        onPress={() => router.push('/settings')}
+      >
+        <Ionicons name="settings" size={24} color={colors.primary} />
+      </TouchableOpacity>
+
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         {/* Kullanıcı Bilgileri */}
-        <View style={styles.userSection}>
+        <View style={[styles.userSection, { backgroundColor: colors.card }]}>
           {/* Profil Fotoğrafı */}
           <TouchableOpacity 
             style={styles.avatarWrapper}
@@ -360,7 +320,7 @@ export default function ProfileScreen() {
                 </Text>
               </View>
             )}
-            <View style={styles.cameraButton}>
+            <View style={[styles.cameraButton, { backgroundColor: colors.primary }]}>
               {uploadingPhoto ? (
                 <ActivityIndicator size="small" color="white" />
               ) : (
@@ -369,92 +329,100 @@ export default function ProfileScreen() {
             </View>
           </TouchableOpacity>
           
-          <Text style={styles.userName}>{userName}</Text>
-          <Text style={styles.userEmail}>{user.email}</Text>
+          <Text style={[styles.userName, { color: colors.text }]}>{userName}</Text>
+          <Text style={[styles.userEmail, { color: colors.secondaryText }]}>{user.email}</Text>
           
           {/* Hızlı Bilgiler */}
           <View style={styles.quickInfo}>
             {userLocation && (
               <View style={styles.quickInfoItem}>
-                <Ionicons name="location" size={16} color="#666" />
-                <Text style={styles.quickInfoText}>{userLocation}</Text>
+                <Ionicons name="location" size={16} color={colors.secondaryText} />
+                <Text style={[styles.quickInfoText, { color: colors.secondaryText }]}>{userLocation}</Text>
               </View>
             )}
             {userPhone && (
               <View style={styles.quickInfoItem}>
-                <Ionicons name="call" size={16} color="#666" />
-                <Text style={styles.quickInfoText}>{userPhone}</Text>
+                <Ionicons name="call" size={16} color={colors.secondaryText} />
+                <Text style={[styles.quickInfoText, { color: colors.secondaryText }]}>{userPhone}</Text>
               </View>
             )}
           </View>
           
           {/* Biyografi */}
           {userBio ? (
-            <View style={styles.bioContainer}>
-              <Ionicons name="document-text" size={16} color="#007AFF" />
-              <Text style={styles.bioText}>{userBio}</Text>
+            <View style={[styles.bioContainer, { backgroundColor: colors.inputBackground }]}>
+              <Ionicons name="document-text" size={16} color={colors.primary} />
+              <Text style={[styles.bioText, { color: colors.secondaryText }]}>{userBio}</Text>
             </View>
           ) : null}
           
           {/* Profili Düzenle Butonu */}
           <TouchableOpacity 
-            style={styles.editProfileButton}
+            style={[styles.editProfileButton, { borderColor: colors.primary }]}
             onPress={() => setEditModalVisible(true)}
           >
-            <Ionicons name="create-outline" size={20} color="#007AFF" />
-            <Text style={styles.editProfileText}>Profili Düzenle</Text>
+            <Ionicons name="create-outline" size={20} color={colors.primary} />
+            <Text style={[styles.editProfileText, { color: colors.primary }]}>Profili Düzenle</Text>
           </TouchableOpacity>
           
           {/* İstatistikler */}
-          <View style={styles.statsContainer}>
+          <View style={[styles.statsContainer, { backgroundColor: colors.inputBackground }]}>
             <View style={styles.statItem}>
-              <Text style={styles.statNumber}>{activeCount}</Text>
-              <Text style={styles.statLabel}>Aktif İlan</Text>
+              <Text style={[styles.statNumber, { color: colors.primary }]}>{activeCount}</Text>
+              <Text style={[styles.statLabel, { color: colors.secondaryText }]}>Aktif İlan</Text>
             </View>
-            <View style={styles.statDivider} />
+            <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
             <View style={styles.statItem}>
-              <Text style={styles.statNumber}>{adoptedCount}</Text>
-              <Text style={styles.statLabel}>Sahiplendirilen</Text>
+              <Text style={[styles.statNumber, { color: colors.primary }]}>{adoptedCount}</Text>
+              <Text style={[styles.statLabel, { color: colors.secondaryText }]}>Sahiplendirilen</Text>
             </View>
-            <View style={styles.statDivider} />
+            <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
             <View style={styles.statItem}>
-              <Text style={styles.statNumber}>{allUserListings.length}</Text>
-              <Text style={styles.statLabel}>Toplam</Text>
+              <Text style={[styles.statNumber, { color: colors.primary }]}>{allUserListings.length}</Text>
+              <Text style={[styles.statLabel, { color: colors.secondaryText }]}>Toplam</Text>
             </View>
           </View>
         </View>
 
         {/* İlanlarım Sekmeleri */}
-        <View style={styles.tabContainer}>
+        <View style={[styles.tabContainer, { backgroundColor: colors.card }]}>
           <TouchableOpacity
-            style={[styles.tab, activeTab === 'active' && styles.tabActive]}
-            onPress={() => {
-              console.log('📑 Aktif ilanlar sekmesi seçildi');
-              setActiveTab('active');
-            }}
+            style={[
+              styles.tab, 
+              activeTab === 'active' && [styles.tabActive, { borderBottomColor: colors.primary }]
+            ]}
+            onPress={() => setActiveTab('active')}
           >
             <Ionicons 
               name="list" 
               size={20} 
-              color={activeTab === 'active' ? '#007AFF' : '#666'} 
+              color={activeTab === 'active' ? colors.primary : colors.secondaryText} 
             />
-            <Text style={[styles.tabText, activeTab === 'active' && styles.tabTextActive]}>
+            <Text style={[
+              styles.tabText, 
+              { color: activeTab === 'active' ? colors.primary : colors.secondaryText },
+              activeTab === 'active' && styles.tabTextActive
+            ]}>
               Aktif ({activeCount})
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.tab, activeTab === 'adopted' && styles.tabActive]}
-            onPress={() => {
-              console.log('📑 Sahiplendirilen sekmesi seçildi');
-              setActiveTab('adopted');
-            }}
+            style={[
+              styles.tab, 
+              activeTab === 'adopted' && [styles.tabActive, { borderBottomColor: colors.primary }]
+            ]}
+            onPress={() => setActiveTab('adopted')}
           >
             <Ionicons 
               name="checkmark-circle" 
               size={20} 
-              color={activeTab === 'adopted' ? '#007AFF' : '#666'} 
+              color={activeTab === 'adopted' ? colors.primary : colors.secondaryText} 
             />
-            <Text style={[styles.tabText, activeTab === 'adopted' && styles.tabTextActive]}>
+            <Text style={[
+              styles.tabText, 
+              { color: activeTab === 'adopted' ? colors.primary : colors.secondaryText },
+              activeTab === 'adopted' && styles.tabTextActive
+            ]}>
               Sahiplendirilen ({adoptedCount})
             </Text>
           </TouchableOpacity>
@@ -462,39 +430,39 @@ export default function ProfileScreen() {
 
         {/* İlan Listesi */}
         {loading ? (
-          <ActivityIndicator size="large" color="#007AFF" style={styles.loader} />
+          <ActivityIndicator size="large" color={colors.primary} style={styles.loader} />
         ) : (
           <FlatList
             data={userListings}
             renderItem={({ item }) => (
-              <View style={styles.listingItem}>
+              <View style={[styles.listingItem, { backgroundColor: colors.card }]}>
                 <ListingCard listing={item} onPress={() => {}} />
                 <View style={styles.listingActions}>
                   {activeTab === 'active' && (
                     <>
                       <TouchableOpacity
-                        style={styles.actionButton}
+                        style={[styles.actionButton, { backgroundColor: CUSTOM_COLORS.adopted }]}
                         onPress={() => handleMarkAdopted(item.id)}
                       >
                         <Ionicons name="checkmark-circle" size={18} color="white" />
                         <Text style={styles.actionButtonText}>Sahiplendirildi</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
-                        style={[styles.actionButton, styles.deleteButton]}
+                        style={[styles.actionButton, { backgroundColor: CUSTOM_COLORS.delete }]}
                         onPress={() => handleDeleteListing(item)}
                       >
                         <Ionicons name="trash" size={18} color="white" />
-                        <Text style={[styles.actionButtonText, styles.deleteButtonText]}>Sil</Text>
+                        <Text style={styles.actionButtonText}>Sil</Text>
                       </TouchableOpacity>
                     </>
                   )}
                   {activeTab === 'adopted' && (
                     <TouchableOpacity
-                      style={[styles.actionButton, styles.deleteButton, { flex: 1 }]}
+                      style={[styles.actionButton, { flex: 1, backgroundColor: CUSTOM_COLORS.delete }]}
                       onPress={() => handleDeleteListing(item)}
                     >
                       <Ionicons name="trash" size={18} color="white" />
-                      <Text style={[styles.actionButtonText, styles.deleteButtonText]}>Sil</Text>
+                      <Text style={styles.actionButtonText}>Sil</Text>
                     </TouchableOpacity>
                   )}
                 </View>
@@ -502,19 +470,19 @@ export default function ProfileScreen() {
             )}
             keyExtractor={(item) => item.id}
             ListEmptyComponent={
-              <View style={styles.emptyContainer}>
+              <View style={[styles.emptyContainer, { backgroundColor: colors.card }]}>
                 <Ionicons 
                   name={activeTab === 'active' ? 'add-circle-outline' : 'checkmark-done-circle-outline'} 
                   size={64} 
-                  color="#ccc" 
+                  color={colors.border} 
                 />
-                <Text style={styles.emptyTitle}>
+                <Text style={[styles.emptyTitle, { color: colors.text }]}>
                   {activeTab === 'active' 
                     ? 'Henüz aktif ilanınız yok' 
                     : 'Henüz sahiplendirilmiş ilanınız yok'
                   }
                 </Text>
-                <Text style={styles.emptyText}>
+                <Text style={[styles.emptyText, { color: colors.secondaryText }]}>
                   {activeTab === 'active' 
                     ? 'Yeni bir hayvan sahiplendirmek için ilan ekleyin'
                     : 'Sahiplendirdiğiniz hayvanlar burada görünecek'
@@ -522,7 +490,7 @@ export default function ProfileScreen() {
                 </Text>
                 {activeTab === 'active' && (
                   <TouchableOpacity 
-                    style={styles.addListingButton}
+                    style={[styles.addListingButton, { backgroundColor: colors.primary }]}
                     onPress={() => router.push('/(tabs)/add')}
                   >
                     <Ionicons name="add" size={20} color="white" />
@@ -536,17 +504,6 @@ export default function ProfileScreen() {
         )}
       </ScrollView>
 
-      {/* Çıkış Butonu */}
-      <View style={styles.footer}>
-        <TouchableOpacity 
-          style={styles.logoutButton}
-          onPress={handleLogout}
-        >
-          <Ionicons name="log-out-outline" size={20} color="white" />
-          <Text style={styles.logoutButtonText}>Çıkış Yap</Text>
-        </TouchableOpacity>
-      </View>
-
       {/* Profil Düzenleme Modal */}
       <Modal
         visible={editModalVisible}
@@ -554,73 +511,106 @@ export default function ProfileScreen() {
         presentationStyle="pageSheet"
         onRequestClose={() => setEditModalVisible(false)}
       >
-        <View style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Profili Düzenle</Text>
+        <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
+          <View style={[styles.modalHeader, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Profili Düzenle</Text>
             <TouchableOpacity 
               onPress={() => setEditModalVisible(false)}
               style={styles.modalCloseButton}
             >
-              <Ionicons name="close" size={24} color="#007AFF" />
+              <Ionicons name="close" size={24} color={colors.primary} />
             </TouchableOpacity>
           </View>
 
           <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>
-                <Ionicons name="person" size={16} color="#333" /> Ad Soyad *
+              <Text style={[styles.formLabel, { color: colors.text }]}>
+                <Ionicons name="person" size={16} color={colors.text} /> Ad Soyad *
               </Text>
               <TextInput
-                style={styles.formInput}
+                style={[
+                  styles.formInput, 
+                  { 
+                    backgroundColor: colors.inputBackground,
+                    borderColor: colors.border,
+                    color: colors.text
+                  }
+                ]}
                 value={userName}
                 onChangeText={setUserName}
                 placeholder="Adınızı ve soyadınızı girin"
+                placeholderTextColor={colors.secondaryText}
               />
             </View>
 
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>
-                <Ionicons name="call" size={16} color="#333" /> Telefon
+              <Text style={[styles.formLabel, { color: colors.text }]}>
+                <Ionicons name="call" size={16} color={colors.text} /> Telefon
               </Text>
               <TextInput
-                style={styles.formInput}
+                style={[
+                  styles.formInput, 
+                  { 
+                    backgroundColor: colors.inputBackground,
+                    borderColor: colors.border,
+                    color: colors.text
+                  }
+                ]}
                 value={userPhone}
                 onChangeText={setUserPhone}
                 placeholder="05XX XXX XX XX"
+                placeholderTextColor={colors.secondaryText}
                 keyboardType="phone-pad"
               />
             </View>
 
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>
-                <Ionicons name="location" size={16} color="#333" /> Konum
+              <Text style={[styles.formLabel, { color: colors.text }]}>
+                <Ionicons name="location" size={16} color={colors.text} /> Konum
               </Text>
               <TextInput
-                style={styles.formInput}
+                style={[
+                  styles.formInput, 
+                  { 
+                    backgroundColor: colors.inputBackground,
+                    borderColor: colors.border,
+                    color: colors.text
+                  }
+                ]}
                 value={userLocation}
                 onChangeText={setUserLocation}
                 placeholder="Şehir, İlçe"
+                placeholderTextColor={colors.secondaryText}
               />
             </View>
 
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>
-                <Ionicons name="document-text" size={16} color="#333" /> Hakkımda
+              <Text style={[styles.formLabel, { color: colors.text }]}>
+                <Ionicons name="document-text" size={16} color={colors.text} /> Hakkımda
               </Text>
               <TextInput
-                style={[styles.formInput, styles.textArea]}
+                style={[
+                  styles.formInput, 
+                  styles.textArea,
+                  { 
+                    backgroundColor: colors.inputBackground,
+                    borderColor: colors.border,
+                    color: colors.text
+                  }
+                ]}
                 value={userBio}
                 onChangeText={setUserBio}
                 placeholder="Kendinizden, hayvan sevginizden bahsedin..."
+                placeholderTextColor={colors.secondaryText}
                 multiline
                 numberOfLines={4}
                 maxLength={200}
               />
-              <Text style={styles.charCount}>{userBio.length}/200</Text>
+              <Text style={[styles.charCount, { color: colors.secondaryText }]}>{userBio.length}/200</Text>
             </View>
 
             <TouchableOpacity 
-              style={styles.saveButton}
+              style={[styles.saveButton, { backgroundColor: colors.primary }]}
               onPress={handleUpdateProfile}
             >
               <Ionicons name="checkmark-circle" size={20} color="white" />
@@ -635,8 +625,23 @@ export default function ProfileScreen() {
 
 const styles = StyleSheet.create({
   container: { 
-    flex: 1, 
-    backgroundColor: '#f5f5f5' 
+    flex: 1
+  },
+  settingsButton: {
+    position: 'absolute',
+    top: 60,
+    right: 16,
+    zIndex: 10,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   scrollView: {
     flex: 1,
@@ -651,17 +656,14 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: 'bold',
     marginBottom: 12,
-    color: '#333',
   },
   authText: {
     fontSize: 16,
-    color: '#666',
     textAlign: 'center',
     marginBottom: 32,
     lineHeight: 22,
   },
   authButton: {
-    backgroundColor: '#007AFF',
     padding: 16,
     borderRadius: 12,
     alignItems: 'center',
@@ -676,14 +678,10 @@ const styles = StyleSheet.create({
   signupButton: {
     backgroundColor: 'transparent',
     borderWidth: 2,
-    borderColor: '#007AFF',
-  },
-  signupButtonText: {
-    color: '#007AFF',
   },
   userSection: { 
-    backgroundColor: 'white', 
     padding: 24, 
+    paddingTop: 80,
     alignItems: 'center',
     marginBottom: 12,
   },
@@ -712,7 +710,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 0,
     right: 0,
-    backgroundColor: '#007AFF',
     width: 32,
     height: 32,
     borderRadius: 16,
@@ -725,11 +722,9 @@ const styles = StyleSheet.create({
     fontSize: 24, 
     fontWeight: 'bold', 
     marginBottom: 4,
-    color: '#333',
   },
   userEmail: { 
     fontSize: 15, 
-    color: '#666',
     marginBottom: 12,
   },
   quickInfo: {
@@ -744,13 +739,11 @@ const styles = StyleSheet.create({
   },
   quickInfoText: {
     fontSize: 14,
-    color: '#666',
   },
   bioContainer: {
     flexDirection: 'row',
     gap: 8,
     padding: 12,
-    backgroundColor: '#f8f9fa',
     borderRadius: 8,
     width: '100%',
     marginBottom: 12,
@@ -758,7 +751,6 @@ const styles = StyleSheet.create({
   bioText: {
     flex: 1,
     fontSize: 14,
-    color: '#666',
     lineHeight: 20,
   },
   editProfileButton: {
@@ -768,19 +760,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderWidth: 1.5,
-    borderColor: '#007AFF',
     borderRadius: 20,
     marginBottom: 20,
   },
   editProfileText: {
-    color: '#007AFF',
     fontSize: 15,
     fontWeight: '600',
   },
   statsContainer: {
     flexDirection: 'row',
     width: '100%',
-    backgroundColor: '#f8f9fa',
     borderRadius: 12,
     padding: 16,
   },
@@ -791,20 +780,16 @@ const styles = StyleSheet.create({
   statNumber: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#007AFF',
     marginBottom: 4,
   },
   statLabel: {
     fontSize: 13,
-    color: '#666',
   },
   statDivider: {
     width: 1,
-    backgroundColor: '#e0e0e0',
   },
   tabContainer: { 
-    flexDirection: 'row', 
-    backgroundColor: 'white',
+    flexDirection: 'row',
     marginBottom: 12,
   },
   tab: { 
@@ -816,16 +801,13 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   tabActive: { 
-    borderBottomWidth: 3, 
-    borderBottomColor: '#007AFF' 
+    borderBottomWidth: 3
   },
   tabText: { 
-    color: '#666', 
     fontWeight: '500',
     fontSize: 15,
   },
   tabTextActive: { 
-    color: '#007AFF', 
     fontWeight: '600' 
   },
   loader: { 
@@ -833,7 +815,6 @@ const styles = StyleSheet.create({
   },
   listingItem: { 
     marginBottom: 12,
-    backgroundColor: 'white',
     borderRadius: 12,
     overflow: 'hidden',
     marginHorizontal: 16,
@@ -845,7 +826,6 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     flex: 1,
-    backgroundColor: '#34C759',
     padding: 12,
     borderRadius: 8,
     alignItems: 'center',
@@ -858,16 +838,9 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 14,
   },
-  deleteButton: {
-    backgroundColor: '#FF3B30',
-  },
-  deleteButtonText: {
-    color: 'white',
-  },
   emptyContainer: { 
     padding: 40, 
     alignItems: 'center',
-    backgroundColor: 'white',
     marginHorizontal: 16,
     borderRadius: 12,
     marginTop: 20,
@@ -876,20 +849,17 @@ const styles = StyleSheet.create({
   emptyTitle: { 
     fontSize: 18, 
     fontWeight: '600',
-    color: '#333',
     marginTop: 16,
     marginBottom: 8,
     textAlign: 'center',
   },
   emptyText: { 
-    color: '#666', 
     textAlign: 'center',
     fontSize: 14,
     lineHeight: 20,
     marginBottom: 24,
   },
   addListingButton: {
-    backgroundColor: '#007AFF',
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 8,
@@ -902,42 +872,20 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 16,
   },
-  footer: {
-    padding: 16,
-    backgroundColor: 'white',
-    borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
-  },
-  logoutButton: {
-    backgroundColor: '#FF3B30',
-    padding: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  logoutButtonText: { 
-    color: 'white', 
-    fontSize: 16, 
-    fontWeight: '600' 
-  },
   modalContainer: {
     flex: 1,
-    backgroundColor: 'white',
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: 16,
+    paddingTop: 60,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
   },
   modalTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#333',
   },
   modalCloseButton: {
     padding: 4,
@@ -952,15 +900,12 @@ const styles = StyleSheet.create({
   formLabel: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#333',
     marginBottom: 8,
   },
   formInput: {
-    backgroundColor: '#f8f8f8',
     padding: 14,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
     fontSize: 16,
   },
   textArea: {
@@ -970,15 +915,14 @@ const styles = StyleSheet.create({
   charCount: {
     textAlign: 'right',
     fontSize: 12,
-    color: '#999',
     marginTop: 4,
   },
   saveButton: {
-    backgroundColor: '#007AFF',
     padding: 16,
     borderRadius: 12,
     alignItems: 'center',
     marginTop: 20,
+    marginBottom: 40,
     flexDirection: 'row',
     justifyContent: 'center',
     gap: 8,
