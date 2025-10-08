@@ -6,12 +6,13 @@ import {
   updateProfile,
   User
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import { auth, db } from '../firebase';
 
 interface UserData {
   name: string;
+  username?: string; // YENİ: Username alanı
   bio?: string;
   email: string;
   phone?: string;
@@ -67,7 +68,7 @@ export function useAuth() {
           name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Kullanıcı',
           email: firebaseUser.email || '',
           bio: '',
-          createdAt: new Date()
+          createdAt: serverTimestamp()
         };
         
         await setDoc(doc(db, 'users', firebaseUser.uid), defaultData);
@@ -115,9 +116,86 @@ export function useAuth() {
     }
   };
 
-  const signUp = async (email: string, password: string, name: string) => {
+  // YENİ: Username kontrol fonksiyonu
+  const checkUsernameAvailability = async (username: string): Promise<boolean> => {
+    if (!username.trim()) return false;
+    
     try {
-      console.log('📝 Kayıt olunuyor:', email);
+      const usernameDoc = await getDoc(doc(db, 'usernames', username.toLowerCase()));
+      return !usernameDoc.exists();
+    } catch (error) {
+      console.error('Username kontrol hatası:', error);
+      return false;
+    }
+  };
+
+  // YENİ: Username güncelleme fonksiyonu
+  const updateUsername = async (username: string): Promise<{ success: boolean; error?: string }> => {
+    if (!user) {
+      return { success: false, error: 'Kullanıcı girişi gerekli' };
+    }
+
+    if (!username.trim() || username.length < 3) {
+      return { success: false, error: 'Kullanıcı adı en az 3 karakter olmalı' };
+    }
+
+    if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+      return { success: false, error: 'Kullanıcı adı sadece harf, rakam ve alt çizgi içerebilir' };
+    }
+
+    try {
+      const usernameLower = username.toLowerCase();
+
+      // Username kontrolü
+      const isAvailable = await checkUsernameAvailability(usernameLower);
+      if (!isAvailable) {
+        return { success: false, error: 'Bu kullanıcı adı zaten alınmış' };
+      }
+
+      // Eski username'i serbest bırak
+      if (userData?.username) {
+        try {
+          await updateDoc(doc(db, 'usernames', userData.username.toLowerCase()), {
+            releasedAt: serverTimestamp()
+          });
+        } catch (error) {
+          console.log('Eski username serbest bırakılamadı:', error);
+        }
+      }
+
+      // Yeni username'i rezerve et
+      await setDoc(doc(db, 'usernames', usernameLower), {
+        userId: user.uid,
+        createdAt: serverTimestamp()
+      });
+
+      // User dokümanını güncelle
+      await updateDoc(doc(db, 'users', user.uid), {
+        username: usernameLower,
+        updatedAt: serverTimestamp()
+      });
+
+      // Local state'i güncelle
+      setUserData(prev => {
+        if (!prev) return null;
+        return { ...prev, username: usernameLower };
+      });
+
+      console.log('✅ Username güncellendi:', usernameLower);
+      return { success: true };
+    } catch (error: any) {
+      console.error('❌ Username güncelleme hatası:', error);
+      return { 
+        success: false, 
+        error: error.message || 'Username güncellenirken bir hata oluştu' 
+      };
+    }
+  };
+
+  // GÜNCELLENDİ: Username parametresi eklendi
+  const signUp = async (email: string, password: string, name: string, username?: string) => {
+    try {
+      console.log('📝 Kayıt olunuyor:', email, 'Username:', username);
       
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       console.log('✅ Hesap oluşturuldu');
@@ -132,11 +210,22 @@ export function useAuth() {
       const userData: UserData = {
         name: name,
         email: email,
+        username: username?.toLowerCase(), // YENİ: Username kaydediliyor
         bio: '',
-        createdAt: new Date()
+        createdAt: serverTimestamp()
       };
 
       await setDoc(doc(db, 'users', userCredential.user.uid), userData);
+      
+      // Eğer username verildiyse, usernames koleksiyonuna da kaydet
+      if (username) {
+        await setDoc(doc(db, 'usernames', username.toLowerCase()), {
+          userId: userCredential.user.uid,
+          createdAt: serverTimestamp()
+        });
+        console.log('✅ Username rezerve edildi:', username);
+      }
+
       setUserData(userData);
       console.log('✅ Kullanıcı dokümanı oluşturuldu');
 
@@ -174,7 +263,7 @@ export function useAuth() {
       // Firestore'da güncelle
       await updateDoc(doc(db, 'users', user.uid), {
         ...updates,
-        updatedAt: new Date()
+        updatedAt: serverTimestamp()
       });
       console.log('✅ Firestore güncellendi');
 
@@ -233,6 +322,9 @@ export function useAuth() {
     signIn,
     signUp,
     logout,
-    updateUserProfile
+    updateUserProfile,
+    checkUsernameAvailability, // YENİ
+    updateUsername, // YENİ
+    setUserData // YENİ: updateUsername için gerekli
   };
 }

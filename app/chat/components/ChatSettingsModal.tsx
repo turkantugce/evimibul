@@ -1,6 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import {
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -11,6 +13,7 @@ import {
 } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import {
+  Alert,
   FlatList,
   Image,
   Modal,
@@ -53,6 +56,7 @@ export default function ChatSettingsModal({
   onSettingsChange
 }: Props) {
   const { colors } = useTheme();
+  const router = useRouter();
   const [readReceipts, setReadReceipts] = useState(true);
   const [muted, setMuted] = useState(false);
   const [sharedMedia, setSharedMedia] = useState<SharedMedia[]>([]);
@@ -154,6 +158,34 @@ export default function ChatSettingsModal({
     updateSetting('muted', value);
   };
 
+  // Sohbeti silme fonksiyonu
+  const handleDeleteConversation = () => {
+    Alert.alert(
+      'Sohbeti Sil',
+      'Bu sohbeti silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.',
+      [
+        {
+          text: 'İptal',
+          style: 'cancel',
+        },
+        {
+          text: 'Sil',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteDoc(doc(db, 'conversations', conversationId));
+              onClose();
+              router.back(); // Sohbet ekranından çık
+            } catch (error) {
+              console.error('Sohbet silme hatası:', error);
+              Alert.alert('Hata', 'Sohbet silinemedi');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   // otherUser undefined ise modal'ı gösterme
   if (!otherUser) {
     return null;
@@ -236,6 +268,29 @@ export default function ChatSettingsModal({
                 thumbColor={muted ? colors.card : colors.card}
               />
             </View>
+          </View>
+
+          {/* Tehlikeli İşlemler */}
+          <View style={[styles.dangerSection, { backgroundColor: colors.card, borderTopColor: colors.border, borderBottomColor: colors.border }]}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Tehlikeli İşlemler</Text>
+            
+            <TouchableOpacity 
+              style={[styles.dangerItem, { borderBottomColor: colors.border }]}
+              onPress={handleDeleteConversation}
+            >
+              <View style={styles.dangerInfo}>
+                <Ionicons name="trash-outline" size={24} color="#ff3b30" />
+                <View style={styles.dangerTextContainer}>
+                  <Text style={[styles.dangerLabel, { color: '#ff3b30' }]}>
+                    Sohbeti Sil
+                  </Text>
+                  <Text style={[styles.dangerDescription, { color: colors.secondaryText }]}>
+                    Bu sohbeti kalıcı olarak sil
+                  </Text>
+                </View>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={colors.secondaryText} />
+            </TouchableOpacity>
           </View>
 
           {/* Paylaşılan Medya */}
@@ -323,6 +378,11 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderBottomWidth: 1,
   },
+  dangerSection: {
+    marginTop: 12,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+  },
   sectionTitle: {
     fontSize: 16,
     fontWeight: '600',
@@ -351,6 +411,30 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   settingDescription: {
+    fontSize: 13,
+  },
+  dangerItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+  },
+  dangerInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 12,
+  },
+  dangerTextContainer: {
+    flex: 1,
+  },
+  dangerLabel: {
+    fontSize: 16,
+    fontWeight: '500',
+    marginBottom: 4,
+  },
+  dangerDescription: {
     fontSize: 13,
   },
   mediaSection: {

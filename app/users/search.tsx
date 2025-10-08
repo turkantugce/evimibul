@@ -18,12 +18,13 @@ import {
   View
 } from 'react-native';
 import { useAuthContext } from '../../contexts/AuthContext';
-import { useTheme } from '../../contexts/ThemeContext'; // Tema eklendi
+import { useTheme } from '../../contexts/ThemeContext';
 import { db } from '../../firebase';
 
 interface UserResult {
   id: string;
   name: string;
+  username?: string; // YENİ: Username alanı eklendi
   email: string;
   photoURL?: string;
   bio?: string;
@@ -32,7 +33,7 @@ interface UserResult {
 export default function UserSearchScreen() {
   const { user } = useAuthContext();
   const router = useRouter();
-  const { colors } = useTheme(); // Tema eklendi
+  const { colors } = useTheme();
   
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<UserResult[]>([]);
@@ -62,11 +63,16 @@ export default function UserSearchScreen() {
         const data = doc.data();
         const userName = (data.name || '').toLowerCase();
         const userEmail = (data.email || '').toLowerCase();
+        const userUsername = (data.username || '').toLowerCase(); // YENİ: Username kontrolü
 
-        if (userName.includes(searchLower) || userEmail.includes(searchLower)) {
+        // YENİ: Username'e göre de ara
+        if (userName.includes(searchLower) || 
+            userEmail.includes(searchLower) ||
+            userUsername.includes(searchLower)) {
           results.push({
             id: doc.id,
             name: data.name || 'İsimsiz Kullanıcı',
+            username: data.username, // YENİ: Username ekle
             email: data.email || '',
             photoURL: data.photoURL,
             bio: data.bio
@@ -98,7 +104,7 @@ export default function UserSearchScreen() {
           <Ionicons name="search" size={20} color={colors.secondaryText} />
           <TextInput
             style={[styles.searchInput, { color: colors.text }]}
-            placeholder="İsim veya email ile ara..."
+            placeholder="İsim, email veya kullanıcı adı ile ara..." // YENİ: Placeholder güncellendi
             placeholderTextColor={colors.secondaryText}
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -145,6 +151,14 @@ export default function UserSearchScreen() {
               )}
               <View style={styles.userInfo}>
                 <Text style={[styles.userName, { color: colors.text }]}>{item.name}</Text>
+                
+                {/* YENİ: Username gösterimi */}
+                {item.username && (
+                  <Text style={[styles.userUsername, { color: colors.primary }]}>
+                    @{item.username}
+                  </Text>
+                )}
+                
                 <Text style={[styles.userEmail, { color: colors.secondaryText }]}>{item.email}</Text>
                 {item.bio && (
                   <Text style={[styles.userBio, { color: colors.secondaryText }]} numberOfLines={1}>
@@ -169,7 +183,7 @@ export default function UserSearchScreen() {
                 <Ionicons name="people" size={64} color={colors.border} />
                 <Text style={[styles.emptyTitle, { color: colors.text }]}>Kullanıcı Ara</Text>
                 <Text style={[styles.emptyText, { color: colors.secondaryText }]}>
-                  İsim veya email ile kullanıcı arayın ve profillerini görüntüleyin
+                  İsim, email veya kullanıcı adı ile kullanıcı arayın ve profillerini görüntüleyin
                 </Text>
               </View>
             )
@@ -263,6 +277,12 @@ const styles = StyleSheet.create({
   userName: {
     fontSize: 16,
     fontWeight: '600',
+    marginBottom: 2,
+  },
+  // YENİ: Username stili
+  userUsername: {
+    fontSize: 14,
+    fontWeight: '500',
     marginBottom: 2,
   },
   userEmail: {

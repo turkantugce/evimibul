@@ -22,6 +22,7 @@ export interface IListing {
 export interface IUser {
   id: string;
   name: string;
+  username?: string; // YENİ: Username alanı eklendi
   email: string;
   bio?: string;
   phone?: string;

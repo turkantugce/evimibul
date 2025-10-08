@@ -32,6 +32,7 @@ import { IListing } from '../../types/types';
 interface UserProfile {
   id: string;
   name: string;
+  username?: string; // YENİ: Username alanı eklendi
   email: string;
   photoURL?: string;
   bio?: string;
@@ -68,6 +69,7 @@ export default function UserProfileScreen() {
         setProfile({
           id: userDoc.id,
           name: data.name || 'İsimsiz Kullanıcı',
+          username: data.username, // YENİ: Username yükle
           email: data.email || '',
           photoURL: data.photoURL,
           bio: data.bio,
@@ -313,6 +315,14 @@ export default function UserProfileScreen() {
             </View>
           )}
           <Text style={[styles.profileName, { color: colors.text }]}>{profile.name}</Text>
+          
+          {/* YENİ: Username gösterimi */}
+          {profile.username && (
+            <Text style={[styles.profileUsername, { color: colors.primary }]}>
+              @{profile.username}
+            </Text>
+          )}
+          
           {profile.location && (
             <View style={styles.locationRow}>
               <Ionicons name="location" size={16} color={colors.secondaryText} />
@@ -464,6 +474,12 @@ const styles = StyleSheet.create({
   profileName: {
     fontSize: 24,
     fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  // YENİ: Username stili
+  profileUsername: {
+    fontSize: 16,
+    fontWeight: '500',
     marginBottom: 8,
   },
   locationRow: {

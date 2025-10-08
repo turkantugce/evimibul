@@ -17,14 +17,51 @@ export default function SignupScreen() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [userName, setUserName] = useState('');
+  const [username, setUsername] = useState(''); // YENİ: Kullanıcı adı alanı
+  const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(null);
+  const [checkingUsername, setCheckingUsername] = useState(false);
   const [loading, setLoading] = useState(false);
   
-  const { signUp } = useAuthContext();
+  const { signUp, checkUsernameAvailability } = useAuthContext();
   const { colors } = useTheme();
   const router = useRouter();
 
+  // YENİ: Username kontrol fonksiyonu
+  const handleUsernameCheck = async () => {
+    if (!username.trim()) {
+      setUsernameAvailable(null);
+      return;
+    }
+
+    if (username.length < 3) {
+      Alert.alert('Hata', 'Kullanıcı adı en az 3 karakter olmalı');
+      setUsernameAvailable(false);
+      return;
+    }
+
+    if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+      Alert.alert('Hata', 'Kullanıcı adı sadece harf, rakam ve alt çizgi içerebilir');
+      setUsernameAvailable(false);
+      return;
+    }
+
+    setCheckingUsername(true);
+    try {
+      const available = await checkUsernameAvailability(username);
+      setUsernameAvailable(available);
+      if (!available) {
+        Alert.alert('Uyarı', 'Bu kullanıcı adı zaten alınmış');
+      }
+    } catch (error) {
+      console.error('Username kontrol hatası:', error);
+      Alert.alert('Hata', 'Kullanıcı adı kontrol edilirken bir hata oluştu');
+    } finally {
+      setCheckingUsername(false);
+    }
+  };
+
   const handleSignup = async () => {
-    if (!email || !password || !confirmPassword || !userName) {
+    if (!email || !password || !confirmPassword || !userName || !username) {
       Alert.alert('Hata', 'Lütfen tüm alanları doldurun');
       return;
     }
@@ -39,8 +76,29 @@ export default function SignupScreen() {
       return;
     }
 
+    if (username.length < 3) {
+      Alert.alert('Hata', 'Kullanıcı adı en az 3 karakter olmalı');
+      return;
+    }
+
+    if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+      Alert.alert('Hata', 'Kullanıcı adı sadece harf, rakam ve alt çizgi içerebilir');
+      return;
+    }
+
+    if (usernameAvailable === false) {
+      Alert.alert('Hata', 'Lütfen müsait bir kullanıcı adı seçin');
+      return;
+    }
+
+    // Username kontrol edilmemişse kontrol et
+    if (usernameAvailable === null) {
+      Alert.alert('Uyarı', 'Lütfen kullanıcı adını kontrol edin');
+      return;
+    }
+
     setLoading(true);
-    const result = await signUp(email, password, userName);
+    const result = await signUp(email, password, userName, username); // YENİ: username parametresi eklendi
     setLoading(false);
 
     if (result.success) {
@@ -74,6 +132,44 @@ export default function SignupScreen() {
       borderColor: colors.border,
       color: colors.text,
       fontSize: 16,
+    },
+    // YENİ: Username container stili
+    usernameContainer: {
+      position: 'relative',
+    },
+    // YENİ: Username input stili
+    usernameInput: {
+      paddingRight: 100, // Buton için yer bırak
+    },
+    // YENİ: Kontrol butonu stili
+    checkButton: {
+      position: 'absolute',
+      right: 10,
+      top: 12,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 8,
+      backgroundColor: colors.primary,
+    },
+    checkButtonText: {
+      color: 'white',
+      fontSize: 12,
+      fontWeight: '600',
+    },
+    // YENİ: Kullanılabilirlik metni stili
+    availabilityText: {
+      fontSize: 12,
+      marginTop: -10,
+      marginBottom: 15,
+      marginLeft: 5,
+    },
+    available: {
+      color: '#4CAF50',
+      fontWeight: '600',
+    },
+    unavailable: {
+      color: '#f44336',
+      fontWeight: '600',
     },
     button: {
       backgroundColor: colors.success,
@@ -111,6 +207,47 @@ export default function SignupScreen() {
         autoCapitalize="words"
       />
       
+      {/* YENİ: Kullanıcı Adı Alanı */}
+      <View style={styles.usernameContainer}>
+        <TextInput
+          style={[styles.input, styles.usernameInput]}
+          placeholder="Kullanıcı Adı *"
+          placeholderTextColor={colors.secondaryText}
+          value={username}
+          onChangeText={(text) => {
+            setUsername(text);
+            setUsernameAvailable(null);
+          }}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+        {username.length > 0 && (
+          <TouchableOpacity 
+            style={styles.checkButton}
+            onPress={handleUsernameCheck}
+            disabled={checkingUsername || username.length < 3}
+          >
+            {checkingUsername ? (
+              <ActivityIndicator size="small" color="white" />
+            ) : (
+              <Text style={styles.checkButtonText}>
+                {username.length < 3 ? 'Min 3' : 'Kontrol'}
+              </Text>
+            )}
+          </TouchableOpacity>
+        )}
+      </View>
+      
+      {/* YENİ: Kullanılabilirlik durumu */}
+      {usernameAvailable !== null && (
+        <Text style={[
+          styles.availabilityText,
+          usernameAvailable ? styles.available : styles.unavailable
+        ]}>
+          {usernameAvailable ? '✓ Bu kullanıcı adı müsait' : '✗ Bu kullanıcı adı alınmış'}
+        </Text>
+      )}
+      
       <TextInput
         style={styles.input}
         placeholder="E-posta *"
@@ -142,7 +279,7 @@ export default function SignupScreen() {
       <TouchableOpacity 
         style={styles.button} 
         onPress={handleSignup}
-        disabled={loading}
+        disabled={loading || usernameAvailable === false}
       >
         {loading ? (
           <ActivityIndicator color={colors.card} />

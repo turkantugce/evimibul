@@ -212,80 +212,89 @@ export default function ListingModal({ visible, listing, onClose }: Props) {
     }
   };
 
-  // Full Screen Image Component - Modal yerine Overlay kullan
+  // Full Screen Image Component
   const FullScreenImageView = () => {
     if (!fullScreenVisible) return null;
     
     return (
-      <View style={[StyleSheet.absoluteFill, { backgroundColor: 'black', zIndex: 9999 }]}>
-        {/* Header */}
-        <View style={styles.fullScreenHeader}>
-          <TouchableOpacity 
-            onPress={closeFullScreen} 
-            style={styles.fullScreenCloseButton}
-          >
-            <Ionicons name="close" size={28} color="white" />
-          </TouchableOpacity>
-          <Text style={styles.fullScreenCounter}>
-            {fullScreenActiveIndex + 1} / {listing?.photos?.length || 0}
-          </Text>
-        </View>
+      <Modal
+        visible={fullScreenVisible}
+        animationType="fade"
+        transparent={false}
+        onRequestClose={closeFullScreen}
+        statusBarTranslucent
+      >
+        <View style={styles.fullScreenContainer}>
+          {/* Header */}
+          <View style={styles.fullScreenHeader}>
+            <TouchableOpacity 
+              onPress={closeFullScreen} 
+              style={styles.fullScreenCloseButton}
+            >
+              <Ionicons name="close" size={28} color="white" />
+            </TouchableOpacity>
+            <Text style={styles.fullScreenCounter}>
+              {fullScreenActiveIndex + 1} / {listing?.photos?.length || 0}
+            </Text>
+          </View>
 
-        {/* Image Swiper */}
-        <ScrollView
-          ref={fullScreenScrollRef}
-          horizontal
-          pagingEnabled
-          showsHorizontalScrollIndicator={false}
-          onMomentumScrollEnd={handleFullScreenSwipe}
-          contentContainerStyle={styles.fullScreenScrollView}
-        >
-          {listing?.photos?.map((photo, index) => (
-            <View key={index} style={styles.fullScreenImageContainer}>
-              <ScrollView
-                maximumZoomScale={3}
-                minimumZoomScale={1}
+          {/* Image Swiper */}
+          <ScrollView
+            ref={fullScreenScrollRef}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            onMomentumScrollEnd={handleFullScreenSwipe}
+            style={styles.fullScreenScrollView}
+          >
+            {listing?.photos?.map((photo, index) => (
+              <View key={index} style={styles.fullScreenImageContainer}>
+                <ScrollView
+                  maximumZoomScale={3}
+                  minimumZoomScale={1}
+                  showsHorizontalScrollIndicator={false}
+                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={styles.zoomContainer}
+                  centerContent
+                >
+                  <Image
+                    source={{ uri: photo }}
+                    style={styles.fullScreenImage}
+                    resizeMode="contain"
+                  />
+                </ScrollView>
+              </View>
+            ))}
+          </ScrollView>
+
+          {/* Thumbnail Indicator */}
+          {listing?.photos && listing.photos.length > 1 && (
+            <View style={styles.fullScreenThumbnailContainer}>
+              <ScrollView 
+                horizontal 
                 showsHorizontalScrollIndicator={false}
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={styles.zoomContainer}
+                contentContainerStyle={styles.fullScreenThumbnailContent}
               >
-                <Image
-                  source={{ uri: photo }}
-                  style={styles.fullScreenImage}
-                  resizeMode="contain"
-                />
+                {listing.photos.map((photo, index) => (
+                  <TouchableOpacity 
+                    key={index} 
+                    onPress={() => handleThumbnailPress(index)}
+                    activeOpacity={0.7}
+                  >
+                    <Image 
+                      source={{ uri: photo }} 
+                      style={[
+                        styles.fullScreenThumbnail,
+                        fullScreenActiveIndex === index && styles.fullScreenThumbnailActive
+                      ]}
+                    />
+                  </TouchableOpacity>
+                ))}
               </ScrollView>
             </View>
-          ))}
-        </ScrollView>
-
-        {/* Thumbnail Indicator */}
-        {listing?.photos && listing.photos.length > 1 && (
-          <View style={styles.fullScreenThumbnailContainer}>
-            <ScrollView 
-              horizontal 
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.fullScreenThumbnailContent}
-            >
-              {listing.photos.map((photo, index) => (
-                <TouchableOpacity 
-                  key={index} 
-                  onPress={() => handleThumbnailPress(index)}
-                  activeOpacity={0.7}
-                >
-                  <Image 
-                    source={{ uri: photo }} 
-                    style={[
-                      styles.fullScreenThumbnail,
-                      fullScreenActiveIndex === index && [styles.fullScreenThumbnailActive, { borderColor: 'white' }]
-                    ]}
-                  />
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-        )}
-      </View>
+          )}
+        </View>
+      </Modal>
     );
   };
 
@@ -569,8 +578,8 @@ export default function ListingModal({ visible, listing, onClose }: Props) {
         </View>
       </Modal>
 
-      {/* Full Screen Image Modal - Ana modal kapalıyken göster */}
-      {visible && <FullScreenImageView />}
+      {/* Full Screen Image Modal */}
+      <FullScreenImageView />
     </>
   );
 }
@@ -794,6 +803,7 @@ const styles = StyleSheet.create({
   // Full Screen Styles
   fullScreenContainer: {
     flex: 1,
+    backgroundColor: 'black',
   },
   fullScreenHeader: {
     position: 'absolute',
@@ -821,7 +831,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   fullScreenScrollView: {
-    alignItems: 'center',
+    flex: 1,
   },
   fullScreenImageContainer: {
     width: width,
@@ -830,7 +840,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   zoomContainer: {
-    flex: 1,
+    minWidth: width,
+    minHeight: height,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -847,15 +858,17 @@ const styles = StyleSheet.create({
   },
   fullScreenThumbnailContent: {
     gap: 8,
+    paddingHorizontal: 4,
   },
   fullScreenThumbnail: {
     width: 50,
     height: 50,
     borderRadius: 6,
     borderWidth: 2,
-    borderColor: 'transparent',
+    borderColor: 'rgba(255,255,255,0.3)',
   },
   fullScreenThumbnailActive: {
     borderWidth: 3,
+    borderColor: 'white',
   },
 });

@@ -40,29 +40,34 @@ const CUSTOM_COLORS = {
 };
 
 export default function ProfileScreen() {
-  const { user, userData, updateUserProfile } = useAuthContext();
+  const { user, userData, updateUserProfile, updateUsername, checkUsernameAvailability } = useAuthContext();
   const router = useRouter();
   const { colors } = useTheme();
   const [activeTab, setActiveTab] = useState<'active' | 'adopted'>('active');
   const [allUserListings, setAllUserListings] = useState<IListing[]>([]);
   const [loading, setLoading] = useState(true);
   const [userName, setUserName] = useState('');
+  const [username, setUsername] = useState(''); // YENİ: Username state
   const [userBio, setUserBio] = useState('');
   const [userPhone, setUserPhone] = useState('');
   const [userLocation, setUserLocation] = useState('');
   const [profilePhoto, setProfilePhoto] = useState<string>('');
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  // YENİ: Username state'leri
+  const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(null);
+  const [checkingUsername, setCheckingUsername] = useState(false);
 
   const avatarColor = AVATAR_COLORS[userName.length % AVATAR_COLORS.length];
 
   useEffect(() => {
     if (user && userData) {
       setUserName(userData.name || user.displayName || user.email?.split('@')[0] || 'Kullanıcı');
+      setUsername(userData.username || ''); // YENİ: Username'i yükle
       setUserBio(userData.bio || '');
-      setUserPhone((userData as any).phone || '');
-      setUserLocation((userData as any).location || '');
-      setProfilePhoto((userData as any).photoURL || '');
+      setUserPhone(userData.phone || '');
+      setUserLocation(userData.location || '');
+      setProfilePhoto(userData.photoURL || '');
     }
   }, [user, userData]);
 
@@ -242,24 +247,74 @@ export default function ProfileScreen() {
     );
   };
 
+  // YENİ: Username kontrol fonksiyonu
+  const handleUsernameCheck = async () => {
+    if (!username.trim()) {
+      setUsernameAvailable(null);
+      return;
+    }
+
+    if (username.length < 3) {
+      Alert.alert('Hata', 'Kullanıcı adı en az 3 karakter olmalı');
+      setUsernameAvailable(false);
+      return;
+    }
+
+    if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+      Alert.alert('Hata', 'Kullanıcı adı sadece harf, rakam ve alt çizgi içerebilir');
+      setUsernameAvailable(false);
+      return;
+    }
+
+    setCheckingUsername(true);
+    try {
+      const available = await checkUsernameAvailability(username);
+      setUsernameAvailable(available);
+      if (!available) {
+        Alert.alert('Uyarı', 'Bu kullanıcı adı zaten alınmış');
+      }
+    } catch (error) {
+      console.error('Username kontrol hatası:', error);
+      Alert.alert('Hata', 'Kullanıcı adı kontrol edilirken bir hata oluştu');
+    } finally {
+      setCheckingUsername(false);
+    }
+  };
+
   const handleUpdateProfile = async () => {
     if (!userName.trim()) {
       Alert.alert('Hata', 'Lütfen bir isim girin');
       return;
     }
-    
-    const result = await updateUserProfile({
-      name: userName,
-      bio: userBio,
-      phone: userPhone,
-      location: userLocation
-    } as any);
 
-    if (result.success) {
+    try {
+      // Önce normal profil bilgilerini güncelle
+      const profileResult = await updateUserProfile({
+        name: userName,
+        bio: userBio,
+        phone: userPhone,
+        location: userLocation
+      });
+
+      if (!profileResult.success) {
+        Alert.alert('Hata', profileResult.error || 'Profil güncellenirken bir sorun oluştu');
+        return;
+      }
+
+      // Eğer username değiştiyse ve müsaitse, username'i güncelle
+      if (username && username !== userData?.username && usernameAvailable === true) {
+        const usernameResult = await updateUsername(username);
+        if (!usernameResult.success) {
+          Alert.alert('Hata', usernameResult.error || 'Kullanıcı adı güncellenirken bir sorun oluştu');
+          return;
+        }
+      }
+
       Alert.alert('Başarılı', 'Profil bilgileri güncellendi');
       setEditModalVisible(false);
-    } else {
-      Alert.alert('Hata', result.error || 'Profil güncellenirken bir sorun oluştu');
+    } catch (error: any) {
+      console.error('Profil güncelleme hatası:', error);
+      Alert.alert('Hata', error.message || 'Profil güncellenirken bir sorun oluştu');
     }
   };
 
@@ -330,6 +385,14 @@ export default function ProfileScreen() {
           </TouchableOpacity>
           
           <Text style={[styles.userName, { color: colors.text }]}>{userName}</Text>
+          
+          {/* YENİ: Username gösterimi */}
+          {userData?.username && (
+            <Text style={[styles.userUsername, { color: colors.primary }]}>
+              @{userData.username}
+            </Text>
+          )}
+          
           <Text style={[styles.userEmail, { color: colors.secondaryText }]}>{user.email}</Text>
           
           {/* Hızlı Bilgiler */}
@@ -543,6 +606,60 @@ export default function ProfileScreen() {
               />
             </View>
 
+            {/* YENİ: Username Alanı */}
+            <View style={styles.formGroup}>
+              <Text style={[styles.formLabel, { color: colors.text }]}>
+                <Ionicons name="at" size={16} color={colors.text} /> Kullanıcı Adı
+              </Text>
+              <View style={styles.usernameRow}>
+                <Text style={[styles.usernamePrefix, { color: colors.secondaryText }]}>@</Text>
+                <TextInput
+                  style={[
+                    styles.formInput,
+                    styles.usernameInput,
+                    { 
+                      backgroundColor: colors.inputBackground,
+                      borderColor: colors.border,
+                      color: colors.text
+                    }
+                  ]}
+                  value={username}
+                  onChangeText={(text) => {
+                    setUsername(text);
+                    setUsernameAvailable(null);
+                  }}
+                  placeholder="kullaniciadi"
+                  placeholderTextColor={colors.secondaryText}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                <TouchableOpacity 
+                  style={[styles.checkUsernameButton, { backgroundColor: colors.primary }]}
+                  onPress={handleUsernameCheck}
+                  disabled={checkingUsername || !username.trim()}
+                >
+                  {checkingUsername ? (
+                    <ActivityIndicator size="small" color="white" />
+                  ) : (
+                    <Text style={styles.checkUsernameButtonText}>
+                      {username.length < 3 ? 'Min 3' : 'Kontrol'}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+              {usernameAvailable !== null && (
+                <Text style={[
+                  styles.availabilityText,
+                  usernameAvailable ? styles.available : styles.unavailable
+                ]}>
+                  {usernameAvailable ? '✓ Bu kullanıcı adı müsait' : '✗ Bu kullanıcı adı alınmış'}
+                </Text>
+              )}
+              <Text style={[styles.helperText, { color: colors.secondaryText }]}>
+                Kullanıcı adınız diğer kullanıcılar tarafından görülebilir
+              </Text>
+            </View>
+
             <View style={styles.formGroup}>
               <Text style={[styles.formLabel, { color: colors.text }]}>
                 <Ionicons name="call" size={16} color={colors.text} /> Telefon
@@ -722,6 +839,12 @@ const styles = StyleSheet.create({
     fontSize: 24, 
     fontWeight: 'bold', 
     marginBottom: 4,
+  },
+  // YENİ: Username stili
+  userUsername: {
+    fontSize: 16,
+    fontWeight: '500',
+    marginBottom: 8,
   },
   userEmail: { 
     fontSize: 15, 
@@ -907,6 +1030,55 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 1,
     fontSize: 16,
+  },
+  // YENİ: Username ile ilgili stiller
+  usernameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  usernamePrefix: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginRight: 8,
+    position: 'absolute',
+    left: 14,
+    zIndex: 1,
+  },
+  usernameInput: {
+    paddingLeft: 30, // @ işareti için yer
+    paddingRight: 100, // Kontrol butonu için yer
+  },
+  checkUsernameButton: {
+    position: 'absolute',
+    right: 10,
+    top: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  checkUsernameButtonText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  availabilityText: {
+    fontSize: 12,
+    marginTop: 4,
+    marginLeft: 5,
+  },
+  available: {
+    color: '#4CAF50',
+    fontWeight: '600',
+  },
+  unavailable: {
+    color: '#f44336',
+    fontWeight: '600',
+  },
+  helperText: {
+    fontSize: 12,
+    marginTop: 4,
+    marginLeft: 5,
+    fontStyle: 'italic',
   },
   textArea: {
     height: 100,
