@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import {
   collection,
   doc,
+  getDoc,
   getDocs,
   onSnapshot,
   query,
@@ -55,7 +56,7 @@ export default function ChatSettingsModal({
   const [readReceipts, setReadReceipts] = useState(true);
   const [muted, setMuted] = useState(false);
   const [sharedMedia, setSharedMedia] = useState<SharedMedia[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [otherUserRealPhoto, setOtherUserRealPhoto] = useState<string | null>(null);
 
   useEffect(() => {
     if (!visible) return;
@@ -92,6 +93,25 @@ export default function ChatSettingsModal({
 
     return () => unsubscribe();
   }, [visible, conversationId]);
+
+  // Diğer kullanıcının gerçek profil fotoğrafını yükle
+  useEffect(() => {
+    if (!visible || !otherUser) return;
+
+    const loadOtherUserPhoto = async () => {
+      try {
+        const userDoc = await getDoc(doc(db, 'users', otherUser.id));
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          setOtherUserRealPhoto(userData.photoURL || null);
+        }
+      } catch (error) {
+        console.error('Kullanıcı fotoğrafı yüklenirken hata:', error);
+      }
+    };
+
+    loadOtherUserPhoto();
+  }, [visible, otherUser]);
 
   const loadSettings = async () => {
     try {
@@ -139,6 +159,9 @@ export default function ChatSettingsModal({
     return null;
   }
 
+  // Gerçek zamanlı fotoğraf varsa onu kullan, yoksa prop'tan gelen fotoğrafı kullan
+  const displayPhoto = otherUserRealPhoto !== null ? otherUserRealPhoto : otherUser.photo;
+
   return (
     <Modal
       visible={visible}
@@ -158,8 +181,12 @@ export default function ChatSettingsModal({
         <ScrollView>
           {/* Kullanıcı Bilgisi */}
           <View style={[styles.userSection, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
-            {otherUser.photo ? (
-              <Image source={{ uri: otherUser.photo }} style={styles.userPhoto} />
+            {displayPhoto ? (
+              <Image 
+                source={{ uri: displayPhoto }} 
+                style={styles.userPhoto}
+                key={displayPhoto} // Force re-render when photo changes
+              />
             ) : (
               <View style={[styles.userPhotoPlaceholder, { backgroundColor: colors.primary }]}>
                 <Text style={styles.userPhotoText}>

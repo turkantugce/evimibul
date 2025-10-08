@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { collection, onSnapshot, or, query, where } from 'firebase/firestore';
+import { collection, doc, getDoc, onSnapshot, or, query, where } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -25,12 +25,18 @@ interface Conversation {
   unreadCount: { [key: string]: number };
 }
 
+// Kullanıcı profil fotoğraflarını cache'lemek için
+interface UserPhotoCache {
+  [userId: string]: string | null;
+}
+
 export default function MessagesScreen() {
   const { user } = useAuthContext();
   const { colors } = useTheme();
   const router = useRouter();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [userPhotos, setUserPhotos] = useState<UserPhotoCache>({});
 
   useEffect(() => {
     if (!user) {
@@ -70,10 +76,45 @@ export default function MessagesScreen() {
 
       setConversations(convos);
       setLoading(false);
+
+      // Tüm katılımcıların profil fotoğraflarını yükle
+      loadUserPhotos(convos);
     });
 
     return () => unsubscribe();
   }, [user]);
+
+  const loadUserPhotos = async (convos: Conversation[]) => {
+    const userIds = new Set<string>();
+    
+    // Tüm benzersiz kullanıcı ID'lerini topla
+    convos.forEach(convo => {
+      convo.participants.forEach(participantId => {
+        if (participantId !== user?.uid) {
+          userIds.add(participantId);
+        }
+      });
+    });
+
+    // Her kullanıcı için profil fotoğrafını yükle
+    const photoCache: UserPhotoCache = {};
+    
+    await Promise.all(
+      Array.from(userIds).map(async (userId) => {
+        try {
+          const userDoc = await getDoc(doc(db, 'users', userId));
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            photoCache[userId] = userData.photoURL || null;
+          }
+        } catch (error) {
+          console.error(`Kullanıcı ${userId} fotoğrafı yüklenemedi:`, error);
+        }
+      })
+    );
+
+    setUserPhotos(photoCache);
+  };
 
   const getOtherUserId = (participants: string[]) => {
     return participants.find(id => id !== user?.uid) || '';
@@ -312,7 +353,12 @@ export default function MessagesScreen() {
         renderItem={({ item }) => {
           const otherUserId = getOtherUserId(item.participants);
           const otherUserName = item.participantNames[otherUserId] || 'Kullanıcı';
-          const otherUserPhoto = item.participantPhotos[otherUserId];
+          
+          // Önce cache'den, yoksa conversation'dan al
+          const otherUserPhoto = userPhotos[otherUserId] !== undefined 
+            ? userPhotos[otherUserId]
+            : item.participantPhotos[otherUserId];
+            
           const unreadCount = item.unreadCount[user.uid] || 0;
 
           return (

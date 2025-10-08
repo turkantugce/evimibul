@@ -22,7 +22,7 @@ import { useAuthContext } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext'; // Tema eklendi
 import { db, storage } from '../../firebase';
 
-const SPECIES_OPTIONS = ['Kedi', 'Köpek', 'Kuş', 'Tavşan', 'Hamster', 'Balık', 'Diğer'];
+const SPECIES_OPTIONS = ['Kedi', 'Köpek', 'Kuş', 'Tavşan', 'Hamster', 'Balık', 'Axolotl', 'Diğer'];
 const GENDER_OPTIONS = ['Erkek', 'Dişi', 'Bilinmiyor'];
 const AGE_OPTIONS = ['0-6 ay', '6-12 ay', '1-3 yaş', '3-7 yaş', '7+ yaş'];
 

@@ -1,9 +1,27 @@
+// app/(tabs)/_layout.tsx
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
+import { StyleSheet, Text, View } from 'react-native';
+import { useNotificationContext } from '../../contexts/NotificationContext';
 import { useTheme } from '../../contexts/ThemeContext';
 
 export default function TabLayout() {
-  const { colors, isDarkMode } = useTheme();
+  const { colors } = useTheme();
+  const { totalUnreadCount } = useNotificationContext();
+
+  console.log('TabLayout - Okunmamış mesaj sayısı:', totalUnreadCount); // Debug için
+
+  const Badge = ({ count }: { count: number }) => {
+    if (count <= 0) return null;
+
+    return (
+      <View style={[styles.badge, { backgroundColor: '#b37754ff' }]}> 
+        <Text style={styles.badgeText}>
+          {count > 99 ? '99+' : count}
+        </Text>
+      </View>
+    );
+  };
 
   return (
     <Tabs
@@ -47,7 +65,10 @@ export default function TabLayout() {
         options={{
           title: 'Mesajlar',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="chatbubbles" size={size} color={color} />
+            <View style={styles.iconContainer}>
+              <Ionicons name="chatbubbles" size={size} color={color} />
+              <Badge count={totalUnreadCount} />
+            </View>
           ),
         }}
       />
@@ -63,3 +84,25 @@ export default function TabLayout() {
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  iconContainer: {
+    position: 'relative',
+  },
+  badge: {
+    position: 'absolute',
+    top: -6,
+    right: -8,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  badgeText: {
+    color: 'white',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+});

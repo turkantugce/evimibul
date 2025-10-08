@@ -5,6 +5,7 @@ import {
   addDoc,
   collection,
   doc,
+  getDoc,
   getDocs,
   onSnapshot,
   orderBy,
@@ -68,6 +69,7 @@ export default function ChatScreen() {
   const [uploading, setUploading] = useState(false);
   const [conversationData, setConversationData] = useState<ConversationData | null>(null);
   const [settingsVisible, setSettingsVisible] = useState(false);
+  const [otherUserRealPhoto, setOtherUserRealPhoto] = useState<string | null>(null);
   const flatListRef = useRef<FlatList>(null);
 
   // Diğer kullanıcı bilgilerini al
@@ -80,7 +82,8 @@ export default function ChatScreen() {
     return {
       id: otherUserId,
       name: conversationData.participantNames[otherUserId] || 'Kullanıcı',
-      photo: conversationData.participantPhotos[otherUserId]
+      // Gerçek zamanlı fotoğraf varsa onu kullan, yoksa conversation'dan al
+      photo: otherUserRealPhoto !== null ? otherUserRealPhoto : conversationData.participantPhotos[otherUserId]
     };
   };
 
@@ -118,6 +121,28 @@ export default function ChatScreen() {
       unsubscribeMessages();
     };
   }, [conversationId, user]);
+
+  // Diğer kullanıcının gerçek profil fotoğrafını yükle
+  useEffect(() => {
+    if (!conversationData || !user) return;
+
+    const otherUserId = conversationData.participants.find(id => id !== user.uid);
+    if (!otherUserId) return;
+
+    const loadOtherUserPhoto = async () => {
+      try {
+        const userDoc = await getDoc(doc(db, 'users', otherUserId));
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          setOtherUserRealPhoto(userData.photoURL || null);
+        }
+      } catch (error) {
+        console.error('Kullanıcı fotoğrafı yüklenirken hata:', error);
+      }
+    };
+
+    loadOtherUserPhoto();
+  }, [conversationData, user]);
 
   const markMessagesAsRead = async () => {
     if (!user || !conversationId) return;
@@ -326,7 +351,11 @@ export default function ChatScreen() {
             onPress={() => router.push(`/users/${otherUser.id}`)}
           >
             {otherUser.photo ? (
-              <Image source={{ uri: otherUser.photo }} style={styles.headerAvatar} />
+              <Image 
+                source={{ uri: otherUser.photo }} 
+                style={styles.headerAvatar}
+                key={otherUser.photo} // Force re-render when photo changes
+              />
             ) : (
               <View style={[styles.headerAvatarPlaceholder, { backgroundColor: colors.primary }]}>
                 <Text style={styles.headerAvatarText}>

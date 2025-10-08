@@ -23,6 +23,7 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
+import ListingModal from '../../components/ListingModal';
 import { useAuthContext } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { db } from '../../firebase';
@@ -50,6 +51,8 @@ export default function UserProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [listingsLoading, setListingsLoading] = useState(true);
   const [creatingConversation, setCreatingConversation] = useState(false);
+  const [selectedListing, setSelectedListing] = useState<IListing | null>(null);
+  const [listingModalVisible, setListingModalVisible] = useState(false);
 
   useEffect(() => {
     loadUserProfile();
@@ -200,6 +203,11 @@ export default function UserProfileScreen() {
     }
   };
 
+  const handleListingPress = (listing: IListing) => {
+    setSelectedListing(listing);
+    setListingModalVisible(true);
+  };
+
   if (loading) {
     return (
       <View style={[styles.centered, { backgroundColor: colors.background }]}>
@@ -227,7 +235,7 @@ export default function UserProfileScreen() {
   const renderListingItem = ({ item }: { item: IListing }) => (
     <TouchableOpacity 
       style={[styles.listingCard, { backgroundColor: colors.inputBackground }]}
-      onPress={() => router.push(`/(tabs)`)}
+      onPress={() => handleListingPress(item)}
     >
       {item.photos && item.photos.length > 0 ? (
         <Image 
@@ -380,6 +388,13 @@ export default function UserProfileScreen() {
           )}
         </View>
       </ScrollView>
+
+      {/* İlan Detay Modal */}
+      <ListingModal
+        visible={listingModalVisible}
+        listing={selectedListing}
+        onClose={() => setListingModalVisible(false)}
+      />
     </View>
   );
 }

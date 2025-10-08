@@ -1,15 +1,16 @@
 {
   "expo": {
-    "name": "petadopt-app",
-    "slug": "petadopt-app",
+    "name": "Evimi Bul",
+    "slug": "evimi-bul",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "petadoptapp",
+    "scheme": "evimibul",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.trkntgce.evimibul"
     },
     "android": {
       "adaptiveIcon": {
@@ -19,7 +20,8 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.trkntgce.evimibul"
     },
     "web": {
       "output": "static",
@@ -35,6 +37,7 @@
           "resizeMode": "contain",
           "backgroundColor": "#ffffff",
           "dark": {
+            "image": "./assets/images/splash-icon.png",
             "backgroundColor": "#000000"
           }
         }
@@ -43,6 +46,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "df445d42-dda8-4750-85be-5b51dcad968e"
+      }
     }
   }
 }

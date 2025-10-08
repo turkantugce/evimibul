@@ -4,13 +4,13 @@ import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
-  apiKey: "FIREBASE_API_KEYİN",
-  authDomain: "FIREBASE_PROJE_ADIN.firebaseapp.com",
-  projectId: "FIREBASE_PROJE_IDN",
-  storageBucket: "FIREBASE_PROJE_ADIN.appspot.com",
-  messagingSenderId: "XXXXXXXXXXX",
-  appId: "1:XXXXXXXXXXXX:web:XXXXXXXXXXXX"
-  measurementId: ""
+  apiKey: "AIzaSyD1AMyCZ1YQ54cZgwY9vF2LHfgGUD3yibg",
+  authDomain: "petadoptionapp-ec77c.firebaseapp.com",
+  projectId: "petadoptionapp-ec77c",
+  storageBucket: "petadoptionapp-ec77c.firebasestorage.app",
+  messagingSenderId: "880779689169",
+  appId: "1:880779689169:web:1fa5d03cf1e178cecdd9f0",
+  measurementId: "G-P0DJV9R9MJ"
 };
 
 // Initialize Firebase

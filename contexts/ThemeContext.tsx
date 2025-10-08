@@ -31,6 +31,7 @@ const lightColors = {
   danger: '#D84315',
   success: '#388E3C',
   warning: '#F57C00',
+  notification: '#f89560ff',
   inputBackground: '#FAFAFA',
   // Yeni eklenen kahverengi tonları
   brownLight: '#EFEBE9',
@@ -49,6 +50,7 @@ const darkColors = {
   danger: '#FF5722',
   success: '#4CAF50',
   warning: '#FF9800',
+  notification: '#f9844eff',
   inputBackground: '#2A2A2A',
   // Yeni eklenen kahverengi tonları
   brownLight: '#4E342E',
