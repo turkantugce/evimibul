@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Evimi Bul",
-    "slug": "evimi-bul",
+    "slug": "petadopt-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -52,6 +52,7 @@
       "eas": {
         "projectId": "df445d42-dda8-4750-85be-5b51dcad968e"
       }
-    }
+    },
+    "owner": "trkntgce"
   }
 }
