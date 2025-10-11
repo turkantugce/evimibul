@@ -184,11 +184,13 @@ export default function HomeScreen() {
     <TouchableOpacity 
       style={[styles.gridCard, { backgroundColor: colors.card }]}
       onPress={() => handleListingPress(item)}
+      testID={`listing-card-${item.id}`}
     >
       {item.photos && item.photos.length > 0 ? (
         <Image 
           source={{ uri: item.photos[0] }} 
           style={styles.gridImage}
+          testID={`listing-image-${item.id}`}
         />
       ) : (
         <View style={[styles.gridImagePlaceholder, { backgroundColor: colors.border }]}>
@@ -239,14 +241,14 @@ export default function HomeScreen() {
 
   if (loading) {
     return (
-      <View style={[styles.centered, { backgroundColor: colors.background }]}>
+      <View style={[styles.centered, { backgroundColor: colors.background }]} testID="loading-indicator">
         <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <View style={[styles.container, { backgroundColor: colors.background }]} testID="home-screen">
       {/* Arama ve Filtre Header */}
       <View style={[styles.header, { backgroundColor: colors.card }]}>
         <View style={[styles.searchContainer, { backgroundColor: colors.inputBackground }]}>
@@ -257,9 +259,13 @@ export default function HomeScreen() {
             placeholderTextColor={colors.secondaryText}
             value={searchQuery}
             onChangeText={setSearchQuery}
+            testID="search-input"
           />
           {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
+            <TouchableOpacity 
+              onPress={() => setSearchQuery('')}
+              testID="search-clear-button"
+            >
               <Ionicons name="close-circle" size={20} color={colors.secondaryText} />
             </TouchableOpacity>
           )}
@@ -268,6 +274,7 @@ export default function HomeScreen() {
         <TouchableOpacity 
           style={[styles.filterButton, { backgroundColor: colors.inputBackground }]}
           onPress={() => setFilterModalVisible(true)}
+          testID="filter-button"
         >
           <Ionicons name="options" size={24} color={colors.primary} />
           {activeFilterCount > 0 && (
@@ -288,6 +295,7 @@ export default function HomeScreen() {
               speciesFilter === '' && [styles.quickFilterChipActive, { backgroundColor: colors.primary }]
             ]}
             onPress={() => setSpeciesFilter('')}
+            testID="filter-all"
           >
             <Text style={[
               styles.quickFilterText, 
@@ -304,6 +312,7 @@ export default function HomeScreen() {
               speciesFilter === 'kedi' && [styles.quickFilterChipActive, { backgroundColor: colors.primary }]
             ]}
             onPress={() => setSpeciesFilter('kedi')}
+            testID="filter-cats"
           >
             <Text style={[
               styles.quickFilterText, 
@@ -320,6 +329,7 @@ export default function HomeScreen() {
               speciesFilter === 'köpek' && [styles.quickFilterChipActive, { backgroundColor: colors.primary }]
             ]}
             onPress={() => setSpeciesFilter('köpek')}
+            testID="filter-dogs"
           >
             <Text style={[
               styles.quickFilterText, 
@@ -336,6 +346,7 @@ export default function HomeScreen() {
               speciesFilter === 'kuş' && [styles.quickFilterChipActive, { backgroundColor: colors.primary }]
             ]}
             onPress={() => setSpeciesFilter('kuş')}
+            testID="filter-birds"
           >
             <Text style={[
               styles.quickFilterText, 
@@ -358,8 +369,9 @@ export default function HomeScreen() {
         columnWrapperStyle={styles.gridRow}
         refreshing={refreshing}
         onRefresh={handleRefresh}
+        testID="listings-flatlist"
         ListEmptyComponent={
-          <View style={styles.emptyContainer}>
+          <View style={styles.emptyContainer} testID="empty-state">
             <Ionicons name="search-outline" size={64} color={colors.secondaryText} />
             <Text style={[styles.emptyText, { color: colors.secondaryText }]}>
               {searchQuery || activeFilterCount > 0
@@ -377,11 +389,15 @@ export default function HomeScreen() {
         animationType="slide"
         presentationStyle="pageSheet"
         onRequestClose={() => setFilterModalVisible(false)}
+        testID="filter-modal"
       >
         <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
           <View style={[styles.modalHeader, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
             <Text style={[styles.modalTitle, { color: colors.text }]}>Filtreler</Text>
-            <TouchableOpacity onPress={() => setFilterModalVisible(false)}>
+            <TouchableOpacity 
+              onPress={() => setFilterModalVisible(false)}
+              testID="close-filter-modal"
+            >
               <Ionicons name="close" size={28} color={colors.primary} />
             </TouchableOpacity>
           </View>
@@ -398,6 +414,7 @@ export default function HomeScreen() {
                     genderFilter === '' && [styles.filterOptionActive, { backgroundColor: colors.primary, borderColor: colors.primary }]
                   ]}
                   onPress={() => setGenderFilter('')}
+                  testID="gender-filter-all"
                 >
                   <Text style={[
                     styles.filterOptionText, 
@@ -414,6 +431,7 @@ export default function HomeScreen() {
                     genderFilter === 'erkek' && [styles.filterOptionActive, { backgroundColor: colors.primary, borderColor: colors.primary }]
                   ]}
                   onPress={() => setGenderFilter('erkek')}
+                  testID="gender-filter-male"
                 >
                   <Text style={[
                     styles.filterOptionText, 
@@ -430,6 +448,7 @@ export default function HomeScreen() {
                     genderFilter === 'dişi' && [styles.filterOptionActive, { backgroundColor: colors.primary, borderColor: colors.primary }]
                   ]}
                   onPress={() => setGenderFilter('dişi')}
+                  testID="gender-filter-female"
                 >
                   <Text style={[
                     styles.filterOptionText, 
@@ -458,6 +477,7 @@ export default function HomeScreen() {
                 placeholderTextColor={colors.secondaryText}
                 value={cityFilter}
                 onChangeText={setCityFilter}
+                testID="city-filter-input"
               />
             </View>
 
@@ -472,6 +492,7 @@ export default function HomeScreen() {
                     vaccinatedFilter === null && [styles.filterOptionActive, { backgroundColor: colors.primary, borderColor: colors.primary }]
                   ]}
                   onPress={() => setVaccinatedFilter(null)}
+                  testID="vaccinated-filter-all"
                 >
                   <Text style={[
                     styles.filterOptionText, 
@@ -488,6 +509,7 @@ export default function HomeScreen() {
                     vaccinatedFilter === true && [styles.filterOptionActive, { backgroundColor: colors.primary, borderColor: colors.primary }]
                   ]}
                   onPress={() => setVaccinatedFilter(true)}
+                  testID="vaccinated-filter-vaccinated"
                 >
                   <Text style={[
                     styles.filterOptionText, 
@@ -504,6 +526,7 @@ export default function HomeScreen() {
                     vaccinatedFilter === false && [styles.filterOptionActive, { backgroundColor: colors.primary, borderColor: colors.primary }]
                   ]}
                   onPress={() => setVaccinatedFilter(false)}
+                  testID="vaccinated-filter-not-vaccinated"
                 >
                   <Text style={[
                     styles.filterOptionText, 
@@ -527,6 +550,7 @@ export default function HomeScreen() {
                     neuteredFilter === null && [styles.filterOptionActive, { backgroundColor: colors.primary, borderColor: colors.primary }]
                   ]}
                   onPress={() => setNeuteredFilter(null)}
+                  testID="neutered-filter-all"
                 >
                   <Text style={[
                     styles.filterOptionText, 
@@ -543,6 +567,7 @@ export default function HomeScreen() {
                     neuteredFilter === true && [styles.filterOptionActive, { backgroundColor: colors.primary, borderColor: colors.primary }]
                   ]}
                   onPress={() => setNeuteredFilter(true)}
+                  testID="neutered-filter-neutered"
                 >
                   <Text style={[
                     styles.filterOptionText, 
@@ -559,6 +584,7 @@ export default function HomeScreen() {
                     neuteredFilter === false && [styles.filterOptionActive, { backgroundColor: colors.primary, borderColor: colors.primary }]
                   ]}
                   onPress={() => setNeuteredFilter(false)}
+                  testID="neutered-filter-not-neutered"
                 >
                   <Text style={[
                     styles.filterOptionText, 
@@ -576,12 +602,14 @@ export default function HomeScreen() {
             <TouchableOpacity 
               style={[styles.clearButton, { backgroundColor: colors.inputBackground }]}
               onPress={clearAllFilters}
+              testID="clear-filters-button"
             >
               <Text style={[styles.clearButtonText, { color: colors.secondaryText }]}>Temizle</Text>
             </TouchableOpacity>
             <TouchableOpacity 
               style={[styles.applyButton, { backgroundColor: colors.primary }]}
               onPress={() => setFilterModalVisible(false)}
+              testID="apply-filters-button"
             >
               <Text style={[styles.applyButtonText, { color: colors.card }]}>
                 Uygula ({filteredListings.length})

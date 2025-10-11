@@ -25,7 +25,6 @@ interface Conversation {
   unreadCount: { [key: string]: number };
 }
 
-// Kullanıcı profil fotoğraflarını cache'lemek için
 interface UserPhotoCache {
   [userId: string]: string | null;
 }
@@ -67,7 +66,6 @@ export default function MessagesScreen() {
         });
       });
 
-      // Son mesaja göre sırala
       convos.sort((a, b) => {
         const timeA = a.lastMessageTime?.toMillis?.() || 0;
         const timeB = b.lastMessageTime?.toMillis?.() || 0;
@@ -77,7 +75,6 @@ export default function MessagesScreen() {
       setConversations(convos);
       setLoading(false);
 
-      // Tüm katılımcıların profil fotoğraflarını yükle
       loadUserPhotos(convos);
     });
 
@@ -87,7 +84,6 @@ export default function MessagesScreen() {
   const loadUserPhotos = async (convos: Conversation[]) => {
     const userIds = new Set<string>();
     
-    // Tüm benzersiz kullanıcı ID'lerini topla
     convos.forEach(convo => {
       convo.participants.forEach(participantId => {
         if (participantId !== user?.uid) {
@@ -96,7 +92,6 @@ export default function MessagesScreen() {
       });
     });
 
-    // Her kullanıcı için profil fotoğrafını yükle
     const photoCache: UserPhotoCache = {};
     
     await Promise.all(
@@ -307,16 +302,17 @@ export default function MessagesScreen() {
 
   if (!user) {
     return (
-      <View style={styles.container}>
-        <View style={styles.authContainer}>
+      <View style={styles.container} testID="messages-screen">
+        <View style={styles.authContainer} testID="auth-container">
           <Ionicons name="chatbubbles" size={64} color={colors.primary} />
-          <Text style={styles.authTitle}>Mesajlar</Text>
-          <Text style={styles.authText}>
+          <Text style={styles.authTitle} testID="auth-title">Mesajlar</Text>
+          <Text style={styles.authText} testID="auth-text">
             Mesajlaşmak için giriş yapmalısınız
           </Text>
           <TouchableOpacity 
             style={styles.authButton}
             onPress={() => router.push('/auth/login')}
+            testID="login-button"
           >
             <Text style={styles.authButtonText}>Giriş Yap</Text>
           </TouchableOpacity>
@@ -327,20 +323,21 @@ export default function MessagesScreen() {
 
   if (loading) {
     return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" color={colors.primary} />
+      <View style={styles.centered} testID="loading-container">
+        <ActivityIndicator size="large" color={colors.primary} testID="loading-indicator" />
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <View style={styles.container} testID="messages-screen">
       {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Mesajlar</Text>
+      <View style={styles.header} testID="messages-header">
+        <Text style={styles.headerTitle} testID="header-title">Mesajlar</Text>
         <TouchableOpacity 
           style={styles.searchButton}
           onPress={() => router.push('/users/search')}
+          testID="search-button"
         >
           <Ionicons name="person-add" size={24} color={colors.primary} />
         </TouchableOpacity>
@@ -348,13 +345,13 @@ export default function MessagesScreen() {
 
       {/* Konuşma Listesi */}
       <FlatList
+        testID="conversations-list"
         data={conversations}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => {
           const otherUserId = getOtherUserId(item.participants);
           const otherUserName = item.participantNames[otherUserId] || 'Kullanıcı';
           
-          // Önce cache'den, yoksa conversation'dan al
           const otherUserPhoto = userPhotos[otherUserId] !== undefined 
             ? userPhotos[otherUserId]
             : item.participantPhotos[otherUserId];
@@ -365,13 +362,18 @@ export default function MessagesScreen() {
             <TouchableOpacity
               style={styles.conversationItem}
               onPress={() => router.push(`/chat/${item.id}`)}
+              testID={`conversation-item-${item.id}`}
             >
               {/* Avatar */}
               {otherUserPhoto ? (
-                <Image source={{ uri: otherUserPhoto }} style={styles.avatar} />
+                <Image 
+                  source={{ uri: otherUserPhoto }} 
+                  style={styles.avatar}
+                  testID={`avatar-image-${item.id}`}
+                />
               ) : (
-                <View style={styles.avatarPlaceholder}>
-                  <Text style={styles.avatarText}>
+                <View style={styles.avatarPlaceholder} testID={`avatar-placeholder-${item.id}`}>
+                  <Text style={styles.avatarText} testID={`avatar-text-${item.id}`}>
                     {otherUserName.charAt(0).toUpperCase()}
                   </Text>
                 </View>
@@ -380,8 +382,10 @@ export default function MessagesScreen() {
               {/* Konuşma Bilgileri */}
               <View style={styles.conversationContent}>
                 <View style={styles.conversationHeader}>
-                  <Text style={styles.userName}>{otherUserName}</Text>
-                  <Text style={styles.time}>
+                  <Text style={styles.userName} testID={`user-name-${item.id}`}>
+                    {otherUserName}
+                  </Text>
+                  <Text style={styles.time} testID={`time-${item.id}`}>
                     {formatTime(item.lastMessageTime)}
                   </Text>
                 </View>
@@ -392,12 +396,15 @@ export default function MessagesScreen() {
                       unreadCount > 0 && styles.unreadMessage
                     ]}
                     numberOfLines={1}
+                    testID={`last-message-${item.id}`}
                   >
                     {item.lastMessage || 'Yeni konuşma'}
                   </Text>
                   {unreadCount > 0 && (
-                    <View style={styles.unreadBadge}>
-                      <Text style={styles.unreadText}>{unreadCount}</Text>
+                    <View style={styles.unreadBadge} testID={`unread-badge-${item.id}`}>
+                      <Text style={styles.unreadText} testID={`unread-count-${item.id}`}>
+                        {unreadCount}
+                      </Text>
                     </View>
                   )}
                 </View>
@@ -406,15 +413,16 @@ export default function MessagesScreen() {
           );
         }}
         ListEmptyComponent={
-          <View style={styles.emptyContainer}>
+          <View style={styles.emptyContainer} testID="empty-state">
             <Ionicons name="chatbubbles-outline" size={64} color={colors.border} />
-            <Text style={styles.emptyTitle}>Henüz mesajınız yok</Text>
-            <Text style={styles.emptyText}>
+            <Text style={styles.emptyTitle} testID="empty-title">Henüz mesajınız yok</Text>
+            <Text style={styles.emptyText} testID="empty-text">
               Kullanıcı ara butonuna tıklayarak yeni bir konuşma başlatabilirsiniz
             </Text>
             <TouchableOpacity
               style={styles.startChatButton}
               onPress={() => router.push('/users/search')}
+              testID="start-chat-button"
             >
               <Ionicons name="person-add" size={20} color={colors.card} />
               <Text style={styles.startChatText}>Kullanıcı Ara</Text>

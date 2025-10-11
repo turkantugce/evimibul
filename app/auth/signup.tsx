@@ -280,6 +280,7 @@ export default function SignupScreen() {
         style={styles.button} 
         onPress={handleSignup}
         disabled={loading || usernameAvailable === false}
+        testID="signup-button"
       >
         {loading ? (
           <ActivityIndicator color={colors.card} />

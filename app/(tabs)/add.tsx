@@ -385,6 +385,7 @@ export default function AddListingScreen() {
               ]} 
               onPress={pickImage}
               disabled={photos.length >= 5}
+              testID="add-photo-button"
             >
               <Ionicons name="camera" size={32} color={colors.secondaryText} />
               <Text style={[styles.addPhotoText, { color: colors.secondaryText }]}>Fotoğraf Ekle</Text>
@@ -396,6 +397,7 @@ export default function AddListingScreen() {
                 <TouchableOpacity 
                   style={styles.removePhotoButton}
                   onPress={() => removePhoto(index)}
+                  testID="remove-photo-button"
                 >
                   <Ionicons name="close-circle" size={24} color={colors.danger} />
                 </TouchableOpacity>
@@ -576,6 +578,7 @@ export default function AddListingScreen() {
             <TouchableOpacity
               style={styles.checkboxRow}
               onPress={() => setForm({ ...form, vaccinated: !form.vaccinated })}
+              testID="vaccinated-checkbox"
             >
               <View style={[
                 styles.checkbox, 
@@ -590,6 +593,7 @@ export default function AddListingScreen() {
             <TouchableOpacity
               style={styles.checkboxRow}
               onPress={() => setForm({ ...form, neutered: !form.neutered })}
+              testID="neutered-checkbox"
             >
               <View style={[
                 styles.checkbox, 
@@ -657,6 +661,7 @@ export default function AddListingScreen() {
           ]}
           onPress={handleSubmit}
           disabled={uploading || !user}
+          testID="submit-button"
         >
           {uploading ? (
             <ActivityIndicator color="white" />

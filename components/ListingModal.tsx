@@ -230,6 +230,7 @@ export default function ListingModal({ visible, listing, onClose }: Props) {
             <TouchableOpacity 
               onPress={closeFullScreen} 
               style={styles.fullScreenCloseButton}
+              testID="fullscreen-close-button"
             >
               <Ionicons name="close" size={28} color="white" />
             </TouchableOpacity>
@@ -350,7 +351,11 @@ export default function ListingModal({ visible, listing, onClose }: Props) {
               ) : null}
             </View>
             
-            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+            <TouchableOpacity 
+              onPress={onClose} 
+              style={styles.closeButton}
+              testID="close-button"
+            >
               <Ionicons name="close" size={28} color={colors.primary} />
             </TouchableOpacity>
           </View>
@@ -362,11 +367,13 @@ export default function ListingModal({ visible, listing, onClose }: Props) {
                 <TouchableOpacity 
                   onPress={() => openFullScreen(activePhoto)}
                   activeOpacity={0.9}
+                  testID="main-image-touchable"
                 >
                   <Image 
                     source={{ uri: listing.photos[activePhoto] }} 
                     style={styles.mainImage}
                     resizeMode="cover"
+                    testID="main-image"
                   />
                   {/* Zoom hint */}
                   <View style={styles.zoomHint}>
@@ -387,6 +394,7 @@ export default function ListingModal({ visible, listing, onClose }: Props) {
                         key={index} 
                         onPress={() => setActivePhoto(index)}
                         activeOpacity={0.7}
+                        testID={`thumbnail-${index}`}
                       >
                         <Image 
                           source={{ uri: photo }} 

@@ -353,6 +353,7 @@ export default function ProfileScreen() {
       <TouchableOpacity 
         style={[styles.settingsButton, { backgroundColor: colors.card }]}
         onPress={() => router.push('/settings')}
+        testID="settings-button"
       >
         <Ionicons name="settings" size={24} color={colors.primary} />
       </TouchableOpacity>
@@ -365,6 +366,7 @@ export default function ProfileScreen() {
             style={styles.avatarWrapper}
             onPress={pickProfilePhoto}
             disabled={uploadingPhoto}
+            testID="avatar-button"
           >
             {profilePhoto ? (
               <Image source={{ uri: profilePhoto }} style={styles.avatarImage} />
@@ -423,6 +425,7 @@ export default function ProfileScreen() {
           <TouchableOpacity 
             style={[styles.editProfileButton, { borderColor: colors.primary }]}
             onPress={() => setEditModalVisible(true)}
+            testID="edit-profile-button"
           >
             <Ionicons name="create-outline" size={20} color={colors.primary} />
             <Text style={[styles.editProfileText, { color: colors.primary }]}>Profili Düzenle</Text>
@@ -430,17 +433,17 @@ export default function ProfileScreen() {
           
           {/* İstatistikler */}
           <View style={[styles.statsContainer, { backgroundColor: colors.inputBackground }]}>
-            <View style={styles.statItem}>
+            <View testID="stats-active" style={styles.statItem}>
               <Text style={[styles.statNumber, { color: colors.primary }]}>{activeCount}</Text>
               <Text style={[styles.statLabel, { color: colors.secondaryText }]}>Aktif İlan</Text>
             </View>
             <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
-            <View style={styles.statItem}>
+            <View testID="stats-adopted" style={styles.statItem}>
               <Text style={[styles.statNumber, { color: colors.primary }]}>{adoptedCount}</Text>
               <Text style={[styles.statLabel, { color: colors.secondaryText }]}>Sahiplendirilen</Text>
             </View>
             <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
-            <View style={styles.statItem}>
+            <View testID="stats-total" style={styles.statItem}>
               <Text style={[styles.statNumber, { color: colors.primary }]}>{allUserListings.length}</Text>
               <Text style={[styles.statLabel, { color: colors.secondaryText }]}>Toplam</Text>
             </View>
@@ -450,6 +453,7 @@ export default function ProfileScreen() {
         {/* İlanlarım Sekmeleri */}
         <View style={[styles.tabContainer, { backgroundColor: colors.card }]}>
           <TouchableOpacity
+            testID="tab-active"
             style={[
               styles.tab, 
               activeTab === 'active' && [styles.tabActive, { borderBottomColor: colors.primary }]
@@ -470,6 +474,7 @@ export default function ProfileScreen() {
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
+            testID="tab-adopted"
             style={[
               styles.tab, 
               activeTab === 'adopted' && [styles.tabActive, { borderBottomColor: colors.primary }]
@@ -500,12 +505,13 @@ export default function ProfileScreen() {
             renderItem={({ item }) => (
               <View style={[styles.listingItem, { backgroundColor: colors.card }]}>
                 <ListingCard listing={item} onPress={() => {}} />
-                <View style={styles.listingActions}>
+                <View testID="listing-actions" style={styles.listingActions}>
                   {activeTab === 'active' && (
                     <>
                       <TouchableOpacity
                         style={[styles.actionButton, { backgroundColor: CUSTOM_COLORS.adopted }]}
                         onPress={() => handleMarkAdopted(item.id)}
+                        testID="mark-adopted-button"
                       >
                         <Ionicons name="checkmark-circle" size={18} color="white" />
                         <Text style={styles.actionButtonText}>Sahiplendirildi</Text>
@@ -513,6 +519,7 @@ export default function ProfileScreen() {
                       <TouchableOpacity
                         style={[styles.actionButton, { backgroundColor: CUSTOM_COLORS.delete }]}
                         onPress={() => handleDeleteListing(item)}
+                        testID="delete-listing-button"
                       >
                         <Ionicons name="trash" size={18} color="white" />
                         <Text style={styles.actionButtonText}>Sil</Text>
@@ -523,6 +530,7 @@ export default function ProfileScreen() {
                     <TouchableOpacity
                       style={[styles.actionButton, { flex: 1, backgroundColor: CUSTOM_COLORS.delete }]}
                       onPress={() => handleDeleteListing(item)}
+                      testID="delete-adopted-button"
                     >
                       <Ionicons name="trash" size={18} color="white" />
                       <Text style={styles.actionButtonText}>Sil</Text>
@@ -533,7 +541,7 @@ export default function ProfileScreen() {
             )}
             keyExtractor={(item) => item.id}
             ListEmptyComponent={
-              <View style={[styles.emptyContainer, { backgroundColor: colors.card }]}>
+              <View testID="empty-listings" style={[styles.emptyContainer, { backgroundColor: colors.card }]}>
                 <Ionicons 
                   name={activeTab === 'active' ? 'add-circle-outline' : 'checkmark-done-circle-outline'} 
                   size={64} 
@@ -553,6 +561,7 @@ export default function ProfileScreen() {
                 </Text>
                 {activeTab === 'active' && (
                   <TouchableOpacity 
+                    testID="add-listing-button"
                     style={[styles.addListingButton, { backgroundColor: colors.primary }]}
                     onPress={() => router.push('/(tabs)/add')}
                   >
@@ -573,12 +582,14 @@ export default function ProfileScreen() {
         animationType="slide"
         presentationStyle="pageSheet"
         onRequestClose={() => setEditModalVisible(false)}
+        testID="edit-profile-modal"
       >
         <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
           <View style={[styles.modalHeader, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
             <Text style={[styles.modalTitle, { color: colors.text }]}>Profili Düzenle</Text>
             <TouchableOpacity 
               onPress={() => setEditModalVisible(false)}
+              testID="close-modal-button"
               style={styles.modalCloseButton}
             >
               <Ionicons name="close" size={24} color={colors.primary} />
@@ -591,6 +602,7 @@ export default function ProfileScreen() {
                 <Ionicons name="person" size={16} color={colors.text} /> Ad Soyad *
               </Text>
               <TextInput
+                testID="name-input"
                 style={[
                   styles.formInput, 
                   { 
@@ -614,6 +626,7 @@ export default function ProfileScreen() {
               <View style={styles.usernameRow}>
                 <Text style={[styles.usernamePrefix, { color: colors.secondaryText }]}>@</Text>
                 <TextInput
+                  testID="username-input"
                   style={[
                     styles.formInput,
                     styles.usernameInput,
@@ -636,6 +649,7 @@ export default function ProfileScreen() {
                 <TouchableOpacity 
                   style={[styles.checkUsernameButton, { backgroundColor: colors.primary }]}
                   onPress={handleUsernameCheck}
+                  testID="check-username-button"
                   disabled={checkingUsername || !username.trim()}
                 >
                   {checkingUsername ? (
@@ -648,10 +662,13 @@ export default function ProfileScreen() {
                 </TouchableOpacity>
               </View>
               {usernameAvailable !== null && (
-                <Text style={[
-                  styles.availabilityText,
-                  usernameAvailable ? styles.available : styles.unavailable
-                ]}>
+                <Text 
+                  style={[
+                    styles.availabilityText,
+                    usernameAvailable ? styles.available : styles.unavailable
+                  ]}
+                  testID="username-availability-text"
+                >
                   {usernameAvailable ? '✓ Bu kullanıcı adı müsait' : '✗ Bu kullanıcı adı alınmış'}
                 </Text>
               )}
@@ -665,6 +682,7 @@ export default function ProfileScreen() {
                 <Ionicons name="call" size={16} color={colors.text} /> Telefon
               </Text>
               <TextInput
+                testID="phone-input"
                 style={[
                   styles.formInput, 
                   { 
@@ -686,6 +704,7 @@ export default function ProfileScreen() {
                 <Ionicons name="location" size={16} color={colors.text} /> Konum
               </Text>
               <TextInput
+                testID="location-input"
                 style={[
                   styles.formInput, 
                   { 
@@ -706,6 +725,7 @@ export default function ProfileScreen() {
                 <Ionicons name="document-text" size={16} color={colors.text} /> Hakkımda
               </Text>
               <TextInput
+                testID="bio-input"
                 style={[
                   styles.formInput, 
                   styles.textArea,
@@ -723,12 +743,13 @@ export default function ProfileScreen() {
                 numberOfLines={4}
                 maxLength={200}
               />
-              <Text style={[styles.charCount, { color: colors.secondaryText }]}>{userBio.length}/200</Text>
+              <Text testID="bio-char-count" style={[styles.charCount, { color: colors.secondaryText }]}>{userBio.length}/200</Text>
             </View>
 
             <TouchableOpacity 
               style={[styles.saveButton, { backgroundColor: colors.primary }]}
               onPress={handleUpdateProfile}
+              testID="save-profile-button"
             >
               <Ionicons name="checkmark-circle" size={20} color="white" />
               <Text style={styles.saveButtonText}>Değişiklikleri Kaydet</Text>

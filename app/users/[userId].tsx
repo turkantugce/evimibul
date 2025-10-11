@@ -172,8 +172,8 @@ export default function UserProfileScreen() {
             [userId as string]: profile?.name || 'Kullanıcı'
           },
           participantPhotos: {
-            [user.uid]: currentUserData?.photoURL || null,
-            [userId as string]: profile?.photoURL || null
+            [user.uid]: currentUserData?.photoURL || '',
+            [userId as string]: profile?.photoURL || ''
           },
           lastMessage: '',
           lastMessageTime: serverTimestamp(),
