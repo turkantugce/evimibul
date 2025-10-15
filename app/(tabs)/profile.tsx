@@ -1,17 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
-import {
-  collection,
-  deleteDoc,
-  doc,
-  onSnapshot,
-  query,
-  updateDoc,
-  where
-} from 'firebase/firestore';
-import { deleteObject, getDownloadURL, ref, uploadBytes } from 'firebase/storage';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -28,16 +20,24 @@ import {
 import ListingCard from '../../components/ListingCard';
 import { useAuthContext } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
-import { db, storage } from '../../firebase';
+import { db, storage, supabase } from '../../lib/supabase';
 import { IListing } from '../../types/types';
 
 const AVATAR_COLORS = ['#795548', '#8D6E63', '#A1887F', '#BCAAA4', '#D7CCC8', '#EFEBE9'];
 
-// Özel buton renkleri
 const CUSTOM_COLORS = {
-  adopted: '#D4A574',  // Yumuşak turuncu (sahiplendirme için)
-  delete: '#8B7355',   // Haki/toprak tonu (silme için)
+  adopted: '#D4A574',
+  delete: '#8B7355',
 };
+
+function decode(base64: string): Uint8Array {
+  const binaryString = atob(base64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+}
 
 export default function ProfileScreen() {
   const { user, userData, updateUserProfile, updateUsername, checkUsernameAvailability } = useAuthContext();
@@ -47,23 +47,23 @@ export default function ProfileScreen() {
   const [allUserListings, setAllUserListings] = useState<IListing[]>([]);
   const [loading, setLoading] = useState(true);
   const [userName, setUserName] = useState('');
-  const [username, setUsername] = useState(''); // YENİ: Username state
+  const [username, setUsername] = useState('');
   const [userBio, setUserBio] = useState('');
   const [userPhone, setUserPhone] = useState('');
   const [userLocation, setUserLocation] = useState('');
   const [profilePhoto, setProfilePhoto] = useState<string>('');
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
-  // YENİ: Username state'leri
   const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(null);
   const [checkingUsername, setCheckingUsername] = useState(false);
 
   const avatarColor = AVATAR_COLORS[userName.length % AVATAR_COLORS.length];
 
+  // ✅ Kullanıcı verilerini güncelle
   useEffect(() => {
     if (user && userData) {
       setUserName(userData.name || user.displayName || user.email?.split('@')[0] || 'Kullanıcı');
-      setUsername(userData.username || ''); // YENİ: Username'i yükle
+      setUsername(userData.username || '');
       setUserBio(userData.bio || '');
       setUserPhone(userData.phone || '');
       setUserLocation(userData.location || '');
@@ -71,75 +71,82 @@ export default function ProfileScreen() {
     }
   }, [user, userData]);
 
-  useEffect(() => {
-    if (user) {
-      const unsubscribe = setupListingsListener();
-      return () => unsubscribe();
-    } else {
+  const loadUserListings = useCallback(async () => {
+    if (!user) {
       setLoading(false);
       setAllUserListings([]);
+      return;
     }
-  }, [user]);
-
-  const setupListingsListener = () => {
-    if (!user) return () => {};
 
     try {
       setLoading(true);
       
-      const q = query(
-        collection(db, 'listings'),
-        where('ownerId', '==', user.uid)
-      );
+      const { data, error } = await supabase
+        .from('listings')
+        .select('*')
+        .eq('owner_id', user.id)
+        .order('created_at', { ascending: false });
 
-      const unsubscribe = onSnapshot(q, 
-        (querySnapshot) => {
-          const listingsData: IListing[] = [];
-          
-          querySnapshot.forEach((doc) => {
-            const data = doc.data();
-            listingsData.push({ 
-              id: doc.id, 
-              title: data.title || '',
-              species: data.species || '',
-              breed: data.breed || '',
-              age: data.age || '',
-              gender: data.gender || '',
-              city: data.city || '',
-              district: data.district || '',
-              description: data.description || '',
-              photos: data.photos || [],
-              vaccinated: data.vaccinated || false,
-              neutered: data.neutered || false,
-              status: data.status || 'active',
-              ownerId: data.ownerId || '',
-              createdAt: data.createdAt,
-              updatedAt: data.updatedAt
-            } as IListing);
-          });
+      if (error) throw error;
 
-          listingsData.sort((a, b) => {
-            const timeA = a.createdAt?.toMillis?.() || 0;
-            const timeB = b.createdAt?.toMillis?.() || 0;
-            return timeB - timeA;
-          });
-          
-          setAllUserListings(listingsData);
-          setLoading(false);
-        },
-        (error) => {
-          console.error('Listener hatası:', error);
-          setLoading(false);
-        }
-      );
+      const listingsData: IListing[] = (data || []).map((item: any) => ({
+        id: item.id,
+        title: item.title || '',
+        species: item.species || '',
+        breed: item.breed || '',
+        age: item.age || '',
+        gender: item.gender || '',
+        city: item.city || '',
+        district: item.district || '',
+        description: item.description || '',
+        photos: item.photos || [],
+        vaccinated: item.vaccinated || false,
+        neutered: item.neutered || false,
+        status: item.status || 'active',
+        ownerId: item.owner_id || '',
+        createdAt: item.created_at,
+        updatedAt: item.updated_at
+      }));
 
-      return unsubscribe;
+      setAllUserListings(listingsData);
     } catch (error) {
-      console.error('Listener kurulum hatası:', error);
+      console.error('Listings load error:', error);
+    } finally {
       setLoading(false);
-      return () => {};
     }
-  };
+  }, [user]);
+
+  // ✅ Her sayfa açıldığında yeniden yükle
+  useFocusEffect(
+    useCallback(() => {
+      loadUserListings();
+    }, [loadUserListings])
+  );
+
+  // ✅ Real-time subscription
+  useEffect(() => {
+    if (!user) return;
+
+    const subscription = supabase
+      .channel(`user_listings_${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'listings',
+          filter: `owner_id=eq.${user.id}`
+        },
+        () => {
+          loadUserListings();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(subscription);
+    };
+  }, [user, loadUserListings]);
 
   const userListings = allUserListings.filter(listing => listing.status === activeTab);
 
@@ -151,7 +158,7 @@ export default function ProfileScreen() {
     }
 
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.7,
@@ -167,87 +174,117 @@ export default function ProfileScreen() {
 
     try {
       setUploadingPhoto(true);
+      console.log('Fotograf yukleme baslatildi:', uri);
 
-      const response = await fetch(uri);
-      const blob = await response.blob();
-      
-      const filename = `profile/${user.uid}/avatar.jpg`;
-      const storageRef = ref(storage, filename);
-      
-      await uploadBytes(storageRef, blob);
-      const downloadURL = await getDownloadURL(storageRef);
-      
-      await updateDoc(doc(db, 'users', user.uid), {
-        photoURL: downloadURL,
-        updatedAt: new Date()
+      const base64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: FileSystem.EncodingType.Base64,
       });
 
-      setProfilePhoto(downloadURL);
+      const fileExt = uri.split('.').pop()?.toLowerCase() || 'jpg';
+      const mimeType = fileExt === 'png' ? 'image/png' : 'image/jpeg';
+      const filePath = `profiles/${user.id}/avatar.${fileExt}`;
+
+      console.log('Fotograf yukleniyor:', filePath);
+
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('images')
+        .upload(filePath, decode(base64), {
+          contentType: mimeType,
+          upsert: true
+        });
+
+      if (uploadError) {
+        console.error('Storage upload error:', uploadError);
+        throw uploadError;
+      }
+
+      console.log('Fotograf yuklendi:', uploadData);
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('images')
+        .getPublicUrl(filePath);
+
+      console.log('Public URL:', publicUrl);
+
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({
+          photo_url: publicUrl,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', user.id);
+
+      if (updateError) {
+        console.error('DB update error:', updateError);
+        throw updateError;
+      }
+
+      setProfilePhoto(publicUrl);
+
+      if (updateUserProfile) {
+        await updateUserProfile({ photoURL: publicUrl });
+      }
+
+      console.log('Tum islemler tamamlandi');
       Alert.alert('Başarılı', 'Profil fotoğrafı güncellendi');
-      
-    } catch (error) {
-      console.error('Fotoğraf yükleme hatası:', error);
-      Alert.alert('Hata', 'Fotoğraf yüklenirken bir sorun oluştu');
+
+    } catch (error: any) {
+      console.error('Photo upload error:', error);
+
+      if (error.message?.includes('row-level security')) {
+        Alert.alert(
+          'Yetki Hatası', 
+          'Supabase Storage RLS policy ayarlarını kontrol edin.\n\n' +
+          'Çözüm:\n' +
+          '1. Supabase Dashboard > Storage > images\n' +
+          '2. Policies > New Policy\n' +
+          '3. "Enable insert for authenticated users only"\n' +
+          '4. Policy: INSERT - authenticated users'
+        );
+      } else {
+        Alert.alert('Hata', error.message || 'Fotoğraf yüklenirken sorun oluştu');
+      }
     } finally {
       setUploadingPhoto(false);
-    }
-  };
-
-  const handleMarkAdopted = async (listingId: string) => {
-    try {
-      await updateDoc(doc(db, 'listings', listingId), {
-        status: 'adopted',
-        updatedAt: new Date()
-      });
-      
-      Alert.alert('Başarılı', 'İlan sahiplendirildi olarak işaretlendi');
-    } catch (error) {
-      console.error('Sahiplendirme hatası:', error);
-      Alert.alert('Hata', 'İşlem sırasında bir hata oluştu');
+      console.log('Upload islemi sonlandi');
     }
   };
 
   const handleDeleteListing = (listing: IListing) => {
     Alert.alert(
       'İlanı Sil',
-      `"${listing.title}" ilanını silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.`,
+      `"${listing.title}" ilanını silmek istediğinizden emin misiniz?`,
       [
         { text: 'İptal', style: 'cancel' },
-        { 
-          text: 'Sil', 
+        {
+          text: 'Sil',
           style: 'destructive',
           onPress: async () => {
             try {
               if (listing.photos && listing.photos.length > 0) {
                 for (const photoUrl of listing.photos) {
                   try {
-                    const urlParts = photoUrl.split('/o/');
-                    if (urlParts.length > 1) {
-                      const pathPart = urlParts[1].split('?')[0];
-                      const photoPath = decodeURIComponent(pathPart);
-                      
-                      const photoRef = ref(storage, photoPath);
-                      await deleteObject(photoRef);
-                    }
-                  } catch (photoError: any) {
-                    console.log('Fotoğraf silme uyarısı:', photoError.message);
+                    const urlParts = photoUrl.split('/');
+                    const fileName = urlParts[urlParts.length - 1];
+                    await storage.listings.delete(fileName);
+                  } catch (photoError) {
+                    console.log('Photo deletion warning:', photoError);
                   }
                 }
               }
-              
-              await deleteDoc(doc(db, 'listings', listing.id));
-              Alert.alert('Başarılı', 'İlan başarıyla silindi');
-            } catch (error: any) {
-              console.error('İlan silme hatası:', error);
-              Alert.alert('Hata', 'İlan silinirken bir sorun oluştu: ' + error.message);
+
+              await db.listings.delete(listing.id);
+              Alert.alert('Başarılı', 'İlan silindi');
+            } catch (error) {
+              console.error('Listing deletion error:', error);
+              Alert.alert('Hata', 'İlan silinirken sorun oluştu');
             }
-          }
-        }
+          },
+        },
       ]
     );
   };
 
-  // YENİ: Username kontrol fonksiyonu
   const handleUsernameCheck = async () => {
     if (!username.trim()) {
       setUsernameAvailable(null);
@@ -274,7 +311,7 @@ export default function ProfileScreen() {
         Alert.alert('Uyarı', 'Bu kullanıcı adı zaten alınmış');
       }
     } catch (error) {
-      console.error('Username kontrol hatası:', error);
+      console.error('Username kontrol hatasi:', error);
       Alert.alert('Hata', 'Kullanıcı adı kontrol edilirken bir hata oluştu');
     } finally {
       setCheckingUsername(false);
@@ -288,7 +325,6 @@ export default function ProfileScreen() {
     }
 
     try {
-      // Önce normal profil bilgilerini güncelle
       const profileResult = await updateUserProfile({
         name: userName,
         bio: userBio,
@@ -301,7 +337,6 @@ export default function ProfileScreen() {
         return;
       }
 
-      // Eğer username değiştiyse ve müsaitse, username'i güncelle
       if (username && username !== userData?.username && usernameAvailable === true) {
         const usernameResult = await updateUsername(username);
         if (!usernameResult.success) {
@@ -313,8 +348,27 @@ export default function ProfileScreen() {
       Alert.alert('Başarılı', 'Profil bilgileri güncellendi');
       setEditModalVisible(false);
     } catch (error: any) {
-      console.error('Profil güncelleme hatası:', error);
+      console.error('Profil guncelleme hatasi:', error);
       Alert.alert('Hata', error.message || 'Profil güncellenirken bir sorun oluştu');
+    }
+  };
+
+  const handleMarkAdopted = async (listingId: string) => {
+    try {
+      const { error } = await supabase
+        .from('listings')
+        .update({ 
+          status: 'adopted',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', listingId);
+
+      if (error) throw error;
+
+      Alert.alert('Başarılı', 'İlan sahiplendirildi olarak işaretlendi');
+    } catch (error) {
+      console.error('Mark adopted error:', error);
+      Alert.alert('Hata', 'İşlem sırasında bir hata oluştu');
     }
   };
 
@@ -349,7 +403,6 @@ export default function ProfileScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Ayarlar Butonu - Sağ Üst Köşe */}
       <TouchableOpacity 
         style={[styles.settingsButton, { backgroundColor: colors.card }]}
         onPress={() => router.push('/settings')}
@@ -359,9 +412,7 @@ export default function ProfileScreen() {
       </TouchableOpacity>
 
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        {/* Kullanıcı Bilgileri */}
         <View style={[styles.userSection, { backgroundColor: colors.card }]}>
-          {/* Profil Fotoğrafı */}
           <TouchableOpacity 
             style={styles.avatarWrapper}
             onPress={pickProfilePhoto}
@@ -388,7 +439,6 @@ export default function ProfileScreen() {
           
           <Text style={[styles.userName, { color: colors.text }]}>{userName}</Text>
           
-          {/* YENİ: Username gösterimi */}
           {userData?.username && (
             <Text style={[styles.userUsername, { color: colors.primary }]}>
               @{userData.username}
@@ -397,7 +447,6 @@ export default function ProfileScreen() {
           
           <Text style={[styles.userEmail, { color: colors.secondaryText }]}>{user.email}</Text>
           
-          {/* Hızlı Bilgiler */}
           <View style={styles.quickInfo}>
             {userLocation && (
               <View style={styles.quickInfoItem}>
@@ -413,7 +462,6 @@ export default function ProfileScreen() {
             )}
           </View>
           
-          {/* Biyografi */}
           {userBio ? (
             <View style={[styles.bioContainer, { backgroundColor: colors.inputBackground }]}>
               <Ionicons name="document-text" size={16} color={colors.primary} />
@@ -421,7 +469,6 @@ export default function ProfileScreen() {
             </View>
           ) : null}
           
-          {/* Profili Düzenle Butonu */}
           <TouchableOpacity 
             style={[styles.editProfileButton, { borderColor: colors.primary }]}
             onPress={() => setEditModalVisible(true)}
@@ -431,7 +478,6 @@ export default function ProfileScreen() {
             <Text style={[styles.editProfileText, { color: colors.primary }]}>Profili Düzenle</Text>
           </TouchableOpacity>
           
-          {/* İstatistikler */}
           <View style={[styles.statsContainer, { backgroundColor: colors.inputBackground }]}>
             <View testID="stats-active" style={styles.statItem}>
               <Text style={[styles.statNumber, { color: colors.primary }]}>{activeCount}</Text>
@@ -450,7 +496,6 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* İlanlarım Sekmeleri */}
         <View style={[styles.tabContainer, { backgroundColor: colors.card }]}>
           <TouchableOpacity
             testID="tab-active"
@@ -496,7 +541,6 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* İlan Listesi */}
         {loading ? (
           <ActivityIndicator size="large" color={colors.primary} style={styles.loader} />
         ) : (
@@ -618,7 +662,6 @@ export default function ProfileScreen() {
               />
             </View>
 
-            {/* YENİ: Username Alanı */}
             <View style={styles.formGroup}>
               <Text style={[styles.formLabel, { color: colors.text }]}>
                 <Ionicons name="at" size={16} color={colors.text} /> Kullanıcı Adı
@@ -762,367 +805,70 @@ export default function ProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1
-  },
-  settingsButton: {
-    position: 'absolute',
-    top: 60,
-    right: 16,
-    zIndex: 10,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  authContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  authTitle: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    marginBottom: 12,
-  },
-  authText: {
-    fontSize: 16,
-    textAlign: 'center',
-    marginBottom: 32,
-    lineHeight: 22,
-  },
-  authButton: {
-    padding: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    width: '100%',
-    marginBottom: 12,
-  },
-  authButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  signupButton: {
-    backgroundColor: 'transparent',
-    borderWidth: 2,
-  },
-  userSection: { 
-    padding: 24, 
-    paddingTop: 80,
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  avatarWrapper: {
-    position: 'relative',
-    marginBottom: 16,
-  },
-  avatar: { 
-    width: 100, 
-    height: 100, 
-    borderRadius: 50, 
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  avatarImage: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-  },
-  avatarText: { 
-    color: 'white', 
-    fontSize: 40, 
-    fontWeight: 'bold' 
-  },
-  cameraButton: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 3,
-    borderColor: 'white',
-  },
-  userName: { 
-    fontSize: 24, 
-    fontWeight: 'bold', 
-    marginBottom: 4,
-  },
-  // YENİ: Username stili
-  userUsername: {
-    fontSize: 16,
-    fontWeight: '500',
-    marginBottom: 8,
-  },
-  userEmail: { 
-    fontSize: 15, 
-    marginBottom: 12,
-  },
-  quickInfo: {
-    flexDirection: 'row',
-    gap: 16,
-    marginBottom: 12,
-  },
-  quickInfoItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  quickInfoText: {
-    fontSize: 14,
-  },
-  bioContainer: {
-    flexDirection: 'row',
-    gap: 8,
-    padding: 12,
-    borderRadius: 8,
-    width: '100%',
-    marginBottom: 12,
-  },
-  bioText: {
-    flex: 1,
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  editProfileButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderWidth: 1.5,
-    borderRadius: 20,
-    marginBottom: 20,
-  },
-  editProfileText: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  statsContainer: {
-    flexDirection: 'row',
-    width: '100%',
-    borderRadius: 12,
-    padding: 16,
-  },
-  statItem: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  statNumber: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  statLabel: {
-    fontSize: 13,
-  },
-  statDivider: {
-    width: 1,
-  },
-  tabContainer: { 
-    flexDirection: 'row',
-    marginBottom: 12,
-  },
-  tab: { 
-    flex: 1, 
-    padding: 16, 
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  tabActive: { 
-    borderBottomWidth: 3
-  },
-  tabText: { 
-    fontWeight: '500',
-    fontSize: 15,
-  },
-  tabTextActive: { 
-    fontWeight: '600' 
-  },
-  loader: { 
-    marginVertical: 40 
-  },
-  listingItem: { 
-    marginBottom: 12,
-    borderRadius: 12,
-    overflow: 'hidden',
-    marginHorizontal: 16,
-  },
-  listingActions: {
-    flexDirection: 'row',
-    padding: 12,
-    gap: 8,
-  },
-  actionButton: {
-    flex: 1,
-    padding: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  actionButtonText: {
-    color: 'white',
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  emptyContainer: { 
-    padding: 40, 
-    alignItems: 'center',
-    marginHorizontal: 16,
-    borderRadius: 12,
-    marginTop: 20,
-    marginBottom: 20,
-  },
-  emptyTitle: { 
-    fontSize: 18, 
-    fontWeight: '600',
-    marginTop: 16,
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  emptyText: { 
-    textAlign: 'center',
-    fontSize: 14,
-    lineHeight: 20,
-    marginBottom: 24,
-  },
-  addListingButton: {
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  addListingButtonText: {
-    color: 'white',
-    fontWeight: '600',
-    fontSize: 16,
-  },
-  modalContainer: {
-    flex: 1,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    paddingTop: 60,
-    borderBottomWidth: 1,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-  modalCloseButton: {
-    padding: 4,
-  },
-  modalContent: {
-    flex: 1,
-    padding: 16,
-  },
-  formGroup: {
-    marginBottom: 24,
-  },
-  formLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  formInput: {
-    padding: 14,
-    borderRadius: 10,
-    borderWidth: 1,
-    fontSize: 16,
-  },
-  // YENİ: Username ile ilgili stiller
-  usernameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  usernamePrefix: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginRight: 8,
-    position: 'absolute',
-    left: 14,
-    zIndex: 1,
-  },
-  usernameInput: {
-    paddingLeft: 30, // @ işareti için yer
-    paddingRight: 100, // Kontrol butonu için yer
-  },
-  checkUsernameButton: {
-    position: 'absolute',
-    right: 10,
-    top: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  checkUsernameButtonText: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  availabilityText: {
-    fontSize: 12,
-    marginTop: 4,
-    marginLeft: 5,
-  },
-  available: {
-    color: '#4CAF50',
-    fontWeight: '600',
-  },
-  unavailable: {
-    color: '#f44336',
-    fontWeight: '600',
-  },
-  helperText: {
-    fontSize: 12,
-    marginTop: 4,
-    marginLeft: 5,
-    fontStyle: 'italic',
-  },
-  textArea: {
-    height: 100,
-    textAlignVertical: 'top',
-  },
-  charCount: {
-    textAlign: 'right',
-    fontSize: 12,
-    marginTop: 4,
-  },
-  saveButton: {
-    padding: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginTop: 20,
-    marginBottom: 40,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  saveButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
-  },
+  container: { flex: 1 },
+  settingsButton: { position: 'absolute', top: 60, right: 16, zIndex: 10, width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 3 },
+  scrollView: { flex: 1 },
+  authContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
+  authTitle: { fontSize: 28, fontWeight: 'bold', marginBottom: 12 },
+  authText: { fontSize: 16, textAlign: 'center', marginBottom: 32, lineHeight: 22 },
+  authButton: { padding: 16, borderRadius: 12, alignItems: 'center', width: '100%', marginBottom: 12 },
+  authButtonText: { color: 'white', fontSize: 16, fontWeight: '600' },
+  signupButton: { backgroundColor: 'transparent', borderWidth: 2 },
+  userSection: { padding: 24, paddingTop: 80, alignItems: 'center', marginBottom: 12 },
+  avatarWrapper: { position: 'relative', marginBottom: 16 },
+  avatar: { width: 100, height: 100, borderRadius: 50, justifyContent: 'center', alignItems: 'center' },
+  avatarImage: { width: 100, height: 100, borderRadius: 50 },
+  avatarText: { color: 'white', fontSize: 40, fontWeight: 'bold' },
+  cameraButton: { position: 'absolute', bottom: 0, right: 0, width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center', borderWidth: 3, borderColor: 'white' },
+  userName: { fontSize: 24, fontWeight: 'bold', marginBottom: 4 },
+  userUsername: { fontSize: 16, fontWeight: '500', marginBottom: 8 },
+  userEmail: { fontSize: 15, marginBottom: 12 },
+  quickInfo: { flexDirection: 'row', gap: 16, marginBottom: 12 },
+  quickInfoItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  quickInfoText: { fontSize: 14 },
+  bioContainer: { flexDirection: 'row', gap: 8, padding: 12, borderRadius: 8, width: '100%', marginBottom: 12 },
+  bioText: { flex: 1, fontSize: 14, lineHeight: 20 },
+  editProfileButton: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 20, paddingVertical: 10, borderWidth: 1.5, borderRadius: 20, marginBottom: 20 },
+  editProfileText: { fontSize: 15, fontWeight: '600' },
+  statsContainer: { flexDirection: 'row', width: '100%', borderRadius: 12, padding: 16 },
+  statItem: { flex: 1, alignItems: 'center' },
+  statNumber: { fontSize: 24, fontWeight: 'bold', marginBottom: 4 },
+  statLabel: { fontSize: 13 },
+  statDivider: { width: 1 },
+  tabContainer: { flexDirection: 'row', marginBottom: 12 },
+  tab: { flex: 1, padding: 16, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 },
+  tabActive: { borderBottomWidth: 3 },
+  tabText: { fontWeight: '500', fontSize: 15 },
+  tabTextActive: { fontWeight: '600' },
+  loader: { marginVertical: 40 },
+  listingItem: { marginBottom: 12, borderRadius: 12, overflow: 'hidden', marginHorizontal: 16 },
+  listingActions: { flexDirection: 'row', padding: 12, gap: 8 },
+  actionButton: { flex: 1, padding: 12, borderRadius: 8, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 },
+  actionButtonText: { color: 'white', fontWeight: '600', fontSize: 14 },
+  emptyContainer: { padding: 40, alignItems: 'center', marginHorizontal: 16, borderRadius: 12, marginTop: 20, marginBottom: 20 },
+  emptyTitle: { fontSize: 18, fontWeight: '600', marginTop: 16, marginBottom: 8, textAlign: 'center' },
+  emptyText: { textAlign: 'center', fontSize: 14, lineHeight: 20, marginBottom: 24 },
+  addListingButton: { paddingHorizontal: 24, paddingVertical: 12, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  addListingButtonText: { color: 'white', fontWeight: '600', fontSize: 16 },
+  modalContainer: { flex: 1 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, paddingTop: 60, borderBottomWidth: 1 },
+  modalTitle: { fontSize: 20, fontWeight: 'bold' },
+  modalCloseButton: { padding: 4 },
+  modalContent: { flex: 1, padding: 16 },
+  formGroup: { marginBottom: 24 },
+  formLabel: { fontSize: 16, fontWeight: '600', marginBottom: 8 },
+  formInput: { padding: 14, borderRadius: 10, borderWidth: 1, fontSize: 16 },
+  usernameRow: { flexDirection: 'row', alignItems: 'center' },
+  usernamePrefix: { fontSize: 16, fontWeight: '600', marginRight: 8, position: 'absolute', left: 14, zIndex: 1 },
+  usernameInput: { paddingLeft: 30, paddingRight: 100 },
+  checkUsernameButton: { position: 'absolute', right: 10, top: 10, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
+  checkUsernameButtonText: { color: 'white', fontSize: 12, fontWeight: '600' },
+  availabilityText: { fontSize: 12, marginTop: 4, marginLeft: 5 },
+  available: { color: '#4CAF50', fontWeight: '600' },
+  unavailable: { color: '#f44336', fontWeight: '600' },
+  helperText: { fontSize: 12, marginTop: 4, marginLeft: 5, fontStyle: 'italic' },
+  textArea: { height: 100, textAlignVertical: 'top' },
+  charCount: { textAlign: 'right', fontSize: 12, marginTop: 4 },
+  saveButton: { padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 20, marginBottom: 40, flexDirection: 'row', justifyContent: 'center', gap: 8 },
+  saveButtonText: { color: 'white', fontSize: 16, fontWeight: '600' },
 });

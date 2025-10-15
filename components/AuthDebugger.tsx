@@ -3,20 +3,20 @@ import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useAuthContext } from '../contexts/AuthContext';
 
 export default function AuthDebugger() {
-  const { user, userData, logout } = useAuthContext();
+  const { user, userData, signOut } = useAuthContext();
 
   const testLogout = async () => {
     console.log('=== LOGOUT TEST ===');
     console.log('Before logout - User:', user?.email);
     console.log('Before logout - UserData:', userData);
     
-    const result = await logout();
-    console.log('Logout result:', result);
-    
-    if (result.success) {
+    try {
+      await signOut();
+      console.log('Logout successful');
       Alert.alert('Başarılı', 'Çıkış yapıldı!');
-    } else {
-      Alert.alert('Hata', result.error || 'Çıkış yapılamadı');
+    } catch (error: any) {
+      console.error('Logout error:', error);
+      Alert.alert('Hata', error.message || 'Çıkış yapılamadı');
     }
   };
 
@@ -25,7 +25,7 @@ export default function AuthDebugger() {
     console.log('User:', user);
     console.log('UserData:', userData);
     console.log('User UID:', user?.uid);
-    console.log('User DisplayName:', user?.displayName);
+    console.log('User DisplayName:', user?.user_metadata?.name);
     console.log('UserData Name:', userData?.name);
     console.log('UserData Bio:', userData?.bio);
     
@@ -38,16 +38,16 @@ export default function AuthDebugger() {
   if (!user) {
     return (
       <View style={styles.container}>
-        <Text style={styles.text}>❌ Kullanıcı Girişi YOK</Text>
+        <Text style={styles.text}> Kullanıcı Girişi YOK</Text>
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      <Text style={styles.text}>✅ Kullanıcı: {user.email}</Text>
-      <Text style={styles.text}>📛 İsim: {userData?.name || 'Yükleniyor...'}</Text>
-      <Text style={styles.text}>📝 Bio: {userData?.bio || 'Yok'}</Text>
+      <Text style={styles.text}> Kullanıcı: {user.email}</Text>
+      <Text style={styles.text}> İsim: {userData?.name || 'Yükleniyor...'}</Text>
+      <Text style={styles.text}> Bio: {userData?.bio || 'Yok'}</Text>
       
       <TouchableOpacity style={styles.debugButton} onPress={testUserData}>
         <Text style={styles.debugButtonText}>Debug Bilgileri</Text>

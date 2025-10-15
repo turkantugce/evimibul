@@ -1,11 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import {
-  collection,
-  getDocs,
-  limit,
-  query,
-} from 'firebase/firestore';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
@@ -19,14 +13,14 @@ import {
 } from 'react-native';
 import { useAuthContext } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
-import { db } from '../../firebase';
+import { db } from '../../lib/supabase';
 
 interface UserResult {
   id: string;
   name: string;
-  username?: string; // YENİ: Username alanı eklendi
+  username?: string;
   email: string;
-  photoURL?: string;
+  photo_url?: string; // DEĞİŞTİ: photoURL yerine photo_url
   bio?: string;
 }
 
@@ -41,52 +35,33 @@ export default function UserSearchScreen() {
   const [searched, setSearched] = useState(false);
 
   const handleSearch = async () => {
-    if (!searchQuery.trim()) return;
+    if (!searchQuery.trim()) return
 
-    setLoading(true);
-    setSearched(true);
+    setLoading(true)
+    setSearched(true)
 
     try {
-      const searchLower = searchQuery.toLowerCase().trim();
+      // ✅ SUPABASE DB - Kullanıcı ara
+      const users = await db.users.search(searchQuery, 20)
       
-      const usersQuery = query(
-        collection(db, 'users'),
-        limit(20)
-      );
+      const results = users
+        .filter(u => u.id !== user?.id)
+        .map(u => ({
+          id: u.id,
+          name: u.name || 'İsimsiz Kullanıcı',
+          username: u.username,
+          email: u.email,
+          photo_url: u.photo_url, // DEĞİŞTİ: photoURL yerine photo_url
+          bio: u.bio,
+        }))
 
-      const snapshot = await getDocs(usersQuery);
-      const results: UserResult[] = [];
-
-      snapshot.forEach((doc) => {
-        if (doc.id === user?.uid) return; // Kendini gösterme
-
-        const data = doc.data();
-        const userName = (data.name || '').toLowerCase();
-        const userEmail = (data.email || '').toLowerCase();
-        const userUsername = (data.username || '').toLowerCase(); // YENİ: Username kontrolü
-
-        // YENİ: Username'e göre de ara
-        if (userName.includes(searchLower) || 
-            userEmail.includes(searchLower) ||
-            userUsername.includes(searchLower)) {
-          results.push({
-            id: doc.id,
-            name: data.name || 'İsimsiz Kullanıcı',
-            username: data.username, // YENİ: Username ekle
-            email: data.email || '',
-            photoURL: data.photoURL,
-            bio: data.bio
-          });
-        }
-      });
-
-      setSearchResults(results);
+      setSearchResults(results)
     } catch (error) {
-      console.error('Arama hatası:', error);
+      console.error('Search error:', error)
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -104,7 +79,7 @@ export default function UserSearchScreen() {
           <Ionicons name="search" size={20} color={colors.secondaryText} />
           <TextInput
             style={[styles.searchInput, { color: colors.text }]}
-            placeholder="İsim, email veya kullanıcı adı ile ara..." // YENİ: Placeholder güncellendi
+            placeholder="İsim, email veya kullanıcı adı ile ara..."
             placeholderTextColor={colors.secondaryText}
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -140,8 +115,8 @@ export default function UserSearchScreen() {
               style={[styles.userItem, { backgroundColor: colors.card, borderBottomColor: colors.border }]}
               onPress={() => router.push(`/users/${item.id}`)}
             >
-              {item.photoURL ? (
-                <Image source={{ uri: item.photoURL }} style={styles.avatar} />
+              {item.photo_url ? ( // DEĞİŞTİ: photoURL yerine photo_url
+                <Image source={{ uri: item.photo_url }} style={styles.avatar} />
               ) : (
                 <View style={[styles.avatarPlaceholder, { backgroundColor: colors.primary }]}>
                   <Text style={styles.avatarText}>
@@ -152,7 +127,6 @@ export default function UserSearchScreen() {
               <View style={styles.userInfo}>
                 <Text style={[styles.userName, { color: colors.text }]}>{item.name}</Text>
                 
-                {/* YENİ: Username gösterimi */}
                 {item.username && (
                   <Text style={[styles.userUsername, { color: colors.primary }]}>
                     @{item.username}
@@ -279,7 +253,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginBottom: 2,
   },
-  // YENİ: Username stili
   userUsername: {
     fontSize: 14,
     fontWeight: '500',

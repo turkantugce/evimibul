@@ -1,6 +1,5 @@
-import { Ionicons } from '@expo/vector-icons';
-import { collection, limit, onSnapshot, orderBy, query, where } from 'firebase/firestore';
-import React, { useEffect, useMemo, useState } from 'react';
+import { Ionicons } from '@expo/vector-icons'
+import React, { useEffect, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
   Dimensions,
@@ -13,163 +12,285 @@ import {
   TextInput,
   TouchableOpacity,
   View
-} from 'react-native';
-import ListingModal from '../../components/ListingModal';
-import { useAuthContext } from '../../contexts/AuthContext';
-import { useTheme } from '../../contexts/ThemeContext';
-import { db } from '../../firebase';
-import { IListing } from '../../types/types';
+} from 'react-native'
+import ListingModal from '../../components/ListingModal'
+import { useAuthContext } from '../../contexts/AuthContext'
+import { useTheme } from '../../contexts/ThemeContext'
+import { supabase } from '../../lib/supabase'
+import { IListing } from '../../types/types'
 
-const { width } = Dimensions.get('window');
-const CARD_WIDTH = (width - 48) / 2;
+const { width } = Dimensions.get('window')
+const CARD_WIDTH = (width - 48) / 2
+
+// ✅ Genişletilmiş tür listesi
+const QUICK_FILTER_SPECIES = [
+  { label: 'Tümü', value: '' },
+  { label: 'Kediler', value: 'Kedi' },
+  { label: 'Köpekler', value: 'Köpek' },
+  { label: 'Kuşlar', value: 'Kuş' },
+  { label: 'Tavşanlar', value: 'Tavşan' },
+  { label: 'Hamsterlar', value: 'Hamster' },
+  { label: 'Balıklar', value: 'Balık' },
+  { label: 'Axolotl', value: 'Axolotl' },
+  { label: 'Kaplumbağalar', value: 'Kaplumbağa' },
+  { label: 'Papağanlar', value: 'Papağan' },
+];
 
 export default function HomeScreen() {
-  const [allListings, setAllListings] = useState<IListing[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [selectedListing, setSelectedListing] = useState<IListing | null>(null);
-  const [modalVisible, setModalVisible] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [allListings, setAllListings] = useState<IListing[]>([])
+  const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [selectedListing, setSelectedListing] = useState<IListing | null>(null)
+  const [modalVisible, setModalVisible] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
   
-  // Filtreler
-  const [speciesFilter, setSpeciesFilter] = useState('');
-  const [genderFilter, setGenderFilter] = useState('');
-  const [ageFilter, setAgeFilter] = useState('');
-  const [cityFilter, setCityFilter] = useState('');
-  const [vaccinatedFilter, setVaccinatedFilter] = useState<boolean | null>(null);
-  const [neuteredFilter, setNeuteredFilter] = useState<boolean | null>(null);
-  const [filterModalVisible, setFilterModalVisible] = useState(false);
+  const [speciesFilter, setSpeciesFilter] = useState('')
+  const [genderFilter, setGenderFilter] = useState('')
+  const [ageFilter, setAgeFilter] = useState('')
+  const [cityFilter, setCityFilter] = useState('')
+  const [vaccinatedFilter, setVaccinatedFilter] = useState<boolean | null>(null)
+  const [neuteredFilter, setNeuteredFilter] = useState<boolean | null>(null)
+  const [filterModalVisible, setFilterModalVisible] = useState(false)
 
-  const { user } = useAuthContext();
-  const { isDarkMode, colors } = useTheme();
+  const { user } = useAuthContext()
+  const { isDarkMode, colors } = useTheme()
 
   useEffect(() => {
-    const unsubscribe = setupListingsListener();
-    return () => unsubscribe();
+    let subscription: any = null;
+    
+    const setupListings = async () => {
+      try {
+        setLoading(true)
+        
+        const { data, error } = await supabase
+          .from('listings')
+          .select('*')
+          .eq('status', 'active')
+          .order('created_at', { ascending: false })
+          .limit(50);
+
+        if (error) throw error;
+
+        const listingsData: IListing[] = (data || []).map((item: any) => ({
+          id: item.id,
+          title: item.title || '',
+          species: item.species || '',
+          breed: item.breed || '',
+          age: item.age || '',
+          gender: item.gender || '',
+          city: item.city || '',
+          district: item.district || '',
+          description: item.description || '',
+          photos: item.photos || [],
+          vaccinated: item.vaccinated || false,
+          neutered: item.neutered || false,
+          status: item.status || 'active',
+          ownerId: item.owner_id || '',
+          createdAt: item.created_at,
+          updatedAt: item.updated_at
+        }));
+
+        setAllListings(listingsData);
+        setLoading(false);
+
+        subscription = supabase
+          .channel('listings_channel')
+          .on(
+            'postgres_changes',
+            {
+              event: 'INSERT',
+              schema: 'public',
+              table: 'listings',
+              filter: 'status=eq.active'
+            },
+            (payload) => {
+              console.log('Yeni ilan eklendi:', payload.new);
+              const newListing: IListing = {
+                id: payload.new.id,
+                title: payload.new.title || '',
+                species: payload.new.species || '',
+                breed: payload.new.breed || '',
+                age: payload.new.age || '',
+                gender: payload.new.gender || '',
+                city: payload.new.city || '',
+                district: payload.new.district || '',
+                description: payload.new.description || '',
+                photos: payload.new.photos || [],
+                vaccinated: payload.new.vaccinated || false,
+                neutered: payload.new.neutered || false,
+                status: payload.new.status || 'active',
+                ownerId: payload.new.owner_id || '',
+                createdAt: payload.new.created_at,
+                updatedAt: payload.new.updated_at
+              };
+              setAllListings(prev => [newListing, ...prev]);
+            }
+          )
+          .on(
+            'postgres_changes',
+            {
+              event: 'UPDATE',
+              schema: 'public',
+              table: 'listings'
+            },
+            (payload) => {
+              console.log('İlan güncellendi:', payload.new);
+              setAllListings(prev => 
+                prev.map(listing => 
+                  listing.id === payload.new.id
+                    ? {
+                        id: payload.new.id,
+                        title: payload.new.title || '',
+                        species: payload.new.species || '',
+                        breed: payload.new.breed || '',
+                        age: payload.new.age || '',
+                        gender: payload.new.gender || '',
+                        city: payload.new.city || '',
+                        district: payload.new.district || '',
+                        description: payload.new.description || '',
+                        photos: payload.new.photos || [],
+                        vaccinated: payload.new.vaccinated || false,
+                        neutered: payload.new.neutered || false,
+                        status: payload.new.status || 'active',
+                        ownerId: payload.new.owner_id || '',
+                        createdAt: payload.new.created_at,
+                        updatedAt: payload.new.updated_at
+                      }
+                    : listing
+                )
+              );
+            }
+          )
+          .on(
+            'postgres_changes',
+            {
+              event: 'DELETE',
+              schema: 'public',
+              table: 'listings'
+            },
+            (payload) => {
+              console.log('İlan silindi:', payload.old.id);
+              setAllListings(prev => prev.filter(listing => listing.id !== payload.old.id));
+            }
+          )
+          .subscribe();
+
+      } catch (error) {
+        console.error('Listings fetch error:', error);
+        setLoading(false);
+      }
+    };
+
+    setupListings();
+
+    return () => {
+      if (subscription) {
+        supabase.removeChannel(subscription);
+      }
+    };
   }, []);
 
-  const setupListingsListener = () => {
-    try {
-      setLoading(true);
-      
-      const q = query(
-        collection(db, 'listings'),
-        where('status', '==', 'active'),
-        orderBy('createdAt', 'desc'),
-        limit(50)
-      );
-
-      const unsubscribe = onSnapshot(q, 
-        (querySnapshot) => {
-          const listingsData: IListing[] = [];
-          
-          querySnapshot.forEach((doc) => {
-            const data = doc.data();
-            listingsData.push({ 
-              id: doc.id, 
-              title: data.title || '',
-              species: data.species || '',
-              breed: data.breed || '',
-              age: data.age || '',
-              gender: data.gender || '',
-              city: data.city || '',
-              district: data.district || '',
-              description: data.description || '',
-              photos: data.photos || [],
-              vaccinated: data.vaccinated || false,
-              neutered: data.neutered || false,
-              status: data.status || 'active',
-              ownerId: data.ownerId || '',
-              createdAt: data.createdAt,
-              updatedAt: data.updatedAt
-            } as IListing);
-          });
-
-          setAllListings(listingsData);
-          setLoading(false);
-        },
-        (error) => {
-          console.error('Listener hatası:', error);
-          setLoading(false);
-        }
-      );
-
-      return unsubscribe;
-    } catch (error) {
-      console.error('Listener kurulum hatası:', error);
-      setLoading(false);
-      return () => {};
-    }
-  };
-
-  // Client-side filtreleme
   const filteredListings = useMemo(() => {
     let filtered = allListings;
 
     if (speciesFilter) {
       filtered = filtered.filter(listing => 
         listing.species.toLowerCase() === speciesFilter.toLowerCase()
-      );
+      )
     }
 
     if (genderFilter) {
       filtered = filtered.filter(listing => 
         listing.gender.toLowerCase() === genderFilter.toLowerCase()
-      );
+      )
     }
 
     if (ageFilter) {
       filtered = filtered.filter(listing => 
         listing.age.toLowerCase() === ageFilter.toLowerCase()
-      );
+      )
     }
 
     if (cityFilter) {
       filtered = filtered.filter(listing => 
         listing.city.toLowerCase().includes(cityFilter.toLowerCase())
-      );
+      )
     }
 
     if (vaccinatedFilter !== null) {
-      filtered = filtered.filter(listing => listing.vaccinated === vaccinatedFilter);
+      filtered = filtered.filter(listing => listing.vaccinated === vaccinatedFilter)
     }
 
     if (neuteredFilter !== null) {
-      filtered = filtered.filter(listing => listing.neutered === neuteredFilter);
+      filtered = filtered.filter(listing => listing.neutered === neuteredFilter)
     }
 
     if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
+      const query = searchQuery.toLowerCase()
       filtered = filtered.filter(listing => 
         listing.title.toLowerCase().includes(query) ||
         listing.species.toLowerCase().includes(query) ||
         listing.breed.toLowerCase().includes(query) ||
         listing.city.toLowerCase().includes(query) ||
         listing.description.toLowerCase().includes(query)
-      );
+      )
     }
 
-    return filtered;
-  }, [allListings, speciesFilter, genderFilter, ageFilter, cityFilter, vaccinatedFilter, neuteredFilter, searchQuery]);
+    return filtered
+  }, [allListings, speciesFilter, genderFilter, ageFilter, cityFilter, vaccinatedFilter, neuteredFilter, searchQuery])
 
   const handleRefresh = async () => {
-    setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 1000);
-  };
+    setRefreshing(true)
+    try {
+      const { data, error } = await supabase
+        .from('listings')
+        .select('*')
+        .eq('status', 'active')
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      if (error) throw error;
+
+      const listingsData: IListing[] = (data || []).map((item: any) => ({
+        id: item.id,
+        title: item.title || '',
+        species: item.species || '',
+        breed: item.breed || '',
+        age: item.age || '',
+        gender: item.gender || '',
+        city: item.city || '',
+        district: item.district || '',
+        description: item.description || '',
+        photos: item.photos || [],
+        vaccinated: item.vaccinated || false,
+        neutered: item.neutered || false,
+        status: item.status || 'active',
+        ownerId: item.owner_id || '',
+        createdAt: item.created_at,
+        updatedAt: item.updated_at
+      }));
+
+      setAllListings(listingsData);
+    } catch (error) {
+      console.error('Refresh error:', error);
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   const handleListingPress = (listing: IListing) => {
-    setSelectedListing(listing);
-    setModalVisible(true);
-  };
+    setSelectedListing(listing)
+    setModalVisible(true)
+  }
 
   const clearAllFilters = () => {
-    setSpeciesFilter('');
-    setGenderFilter('');
-    setAgeFilter('');
-    setCityFilter('');
-    setVaccinatedFilter(null);
-    setNeuteredFilter(null);
-  };
+    setSpeciesFilter('')
+    setGenderFilter('')
+    setAgeFilter('')
+    setCityFilter('')
+    setVaccinatedFilter(null)
+    setNeuteredFilter(null)
+  }
 
   const activeFilterCount = [
     speciesFilter,
@@ -178,7 +299,7 @@ export default function HomeScreen() {
     cityFilter,
     vaccinatedFilter !== null,
     neuteredFilter !== null
-  ].filter(Boolean).length;
+  ].filter(Boolean).length
 
   const renderGridItem = ({ item }: { item: IListing }) => (
     <TouchableOpacity 
@@ -288,74 +409,26 @@ export default function HomeScreen() {
       {/* Hızlı Tür Filtresi */}
       <View style={[styles.quickFilters, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          <TouchableOpacity 
-            style={[
-              styles.quickFilterChip, 
-              { backgroundColor: colors.inputBackground },
-              speciesFilter === '' && [styles.quickFilterChipActive, { backgroundColor: colors.primary }]
-            ]}
-            onPress={() => setSpeciesFilter('')}
-            testID="filter-all"
-          >
-            <Text style={[
-              styles.quickFilterText, 
-              { color: colors.secondaryText },
-              speciesFilter === '' && [styles.quickFilterTextActive, { color: colors.card }]
-            ]}>
-              Tümü
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={[
-              styles.quickFilterChip, 
-              { backgroundColor: colors.inputBackground },
-              speciesFilter === 'kedi' && [styles.quickFilterChipActive, { backgroundColor: colors.primary }]
-            ]}
-            onPress={() => setSpeciesFilter('kedi')}
-            testID="filter-cats"
-          >
-            <Text style={[
-              styles.quickFilterText, 
-              { color: colors.secondaryText },
-              speciesFilter === 'kedi' && [styles.quickFilterTextActive, { color: colors.card }]
-            ]}>
-              Kediler
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={[
-              styles.quickFilterChip, 
-              { backgroundColor: colors.inputBackground },
-              speciesFilter === 'köpek' && [styles.quickFilterChipActive, { backgroundColor: colors.primary }]
-            ]}
-            onPress={() => setSpeciesFilter('köpek')}
-            testID="filter-dogs"
-          >
-            <Text style={[
-              styles.quickFilterText, 
-              { color: colors.secondaryText },
-              speciesFilter === 'köpek' && [styles.quickFilterTextActive, { color: colors.card }]
-            ]}>
-              Köpekler
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={[
-              styles.quickFilterChip, 
-              { backgroundColor: colors.inputBackground },
-              speciesFilter === 'kuş' && [styles.quickFilterChipActive, { backgroundColor: colors.primary }]
-            ]}
-            onPress={() => setSpeciesFilter('kuş')}
-            testID="filter-birds"
-          >
-            <Text style={[
-              styles.quickFilterText, 
-              { color: colors.secondaryText },
-              speciesFilter === 'kuş' && [styles.quickFilterTextActive, { color: colors.card }]
-            ]}>
-              Kuşlar
-            </Text>
-          </TouchableOpacity>
+          {QUICK_FILTER_SPECIES.map((item) => (
+            <TouchableOpacity 
+              key={item.value}
+              style={[
+                styles.quickFilterChip, 
+                { backgroundColor: colors.inputBackground },
+                speciesFilter === item.value && [styles.quickFilterChipActive, { backgroundColor: colors.primary }]
+              ]}
+              onPress={() => setSpeciesFilter(item.value)}
+              testID={`filter-${item.value || 'all'}`}
+            >
+              <Text style={[
+                styles.quickFilterText, 
+                { color: colors.secondaryText },
+                speciesFilter === item.value && [styles.quickFilterTextActive, { color: colors.card }]
+              ]}>
+                {item.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
         </ScrollView>
       </View>
 
@@ -861,4 +934,4 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-});
+});;

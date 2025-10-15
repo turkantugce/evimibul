@@ -1,8 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
-import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
@@ -19,10 +18,28 @@ import {
   View
 } from 'react-native';
 import { useAuthContext } from '../../contexts/AuthContext';
-import { useTheme } from '../../contexts/ThemeContext'; // Tema eklendi
-import { db, storage } from '../../firebase';
+import { useTheme } from '../../contexts/ThemeContext';
+import { supabase } from '../../lib/supabase';
 
-const SPECIES_OPTIONS = ['Kedi', 'Köpek', 'Kuş', 'Tavşan', 'Hamster', 'Balık', 'Axolotl', 'Diğer'];
+// ✅ Genişletilmiş tür listesi
+const SPECIES_OPTIONS = [
+  'Kedi', 
+  'Köpek', 
+  'Kuş', 
+  'Tavşan', 
+  'Hamster', 
+  'Balık', 
+  'Axolotl', 
+  'Kaplumbağa',
+  'Papağan',
+  'Muhabbet Kuşu',
+  'Yılan',
+  'Kertenkele',
+  'Kobay',
+  'Sincap',
+  'Diğer'
+];
+
 const GENDER_OPTIONS = ['Erkek', 'Dişi', 'Bilinmiyor'];
 const AGE_OPTIONS = ['0-6 ay', '6-12 ay', '1-3 yaş', '3-7 yaş', '7+ yaş'];
 
@@ -68,7 +85,7 @@ const CITIES_AND_DISTRICTS = {
   Isparta: [ "Atabey", "Eğirdir", "Gelendost", "Merkez", "Keçiborlu", "Senirkent", "Sütçüler", "Şarkikaraağaç", "Uluborlu", "Yalvaç", "Aksu", "Gönen", "Yenişarbademli" ],
   İstanbul: [ "Adalar", "Bakırköy", "Beşiktaş", "Beykoz", "Beyoğlu", "Çatalca", "Eyüp", "Fatih", "Gaziosmanpaşa", "Kadıköy", "Kartal", "Sarıyer", "Silivri", "Şile", "Şişli", "Üsküdar", "Zeytinburnu", "Büyükçekmece", "Kağıthane", "Küçükçekmece", "Pendik", "Ümraniye", "Bayrampaşa", "Avcılar", "Bağcılar", "Bahçelievler", "Güngören", "Maltepe", "Sultanbeyli", "Tuzla", "Esenler", "Arnavutköy", "Ataşehir", "Başakşehir", "Beylikdüzü", "Çekmeköy", "Esenyurt", "Sancaktepe", "Sultangazi" ],
   İzmir: [ "Aliağa", "Bayındır", "Bergama", "Bornova", "Çeşme", "Dikili", "Foça", "Karaburun", "Karşıyaka", "Kemalpaşa", "Kınık", "Kiraz", "Menemen", "Ödemiş", "Seferihisar", "Selçuk", "Tire", "Torbalı", "Urla", "Beydağ", "Buca", "Konak", "Menderes", "Balçova", "Çiğli", "Gaziemir", "Narlıdere", "Güzelbahçe", "Bayraklı", "Karabağlar" ],
-  Kahramanmaraş: [ "Afşin", "Andırın", "Dulkadiroğlu", "Onikişubat", "Elbistan", "Göksun", "Merkez", "Pazarcık", "Türkoğlu", "Çağlayancerit", "Ekinözü", "Nurhak" ],
+  Kahramanmaraş: [ "Afşin", "Andırın", "Dulkadiروğlu", "Onikişubat", "Elbistan", "Göksun", "Merkez", "Pazarcık", "Türkoğlu", "Çağlayancerit", "Ekinözü", "Nurhak" ],
   Karabük: [ "Eflani", "Eskipazar", "Merkez", "Ovacık", "Safranbolu", "Yenice" ] ,
   Karaman: [ "Ermenek", "Merkez", "Ayrancı", "Kazımkarabekir", "Başyayla", "Sarıveliler" ],
   Kars: [ "Arpaçay", "Digor", "Kağızman", "Merkez", "Sarıkamış", "Selim", "Susuz", "Akyaka" ],
@@ -123,7 +140,7 @@ const DropdownModal = ({
   onSelect: (item: string) => void; 
   onClose: () => void;
 }) => {
-  const { colors } = useTheme(); // Tema eklendi
+  const { colors } = useTheme();
 
   return (
     <Modal
@@ -158,6 +175,15 @@ const DropdownModal = ({
   );
 };
 
+function decode(base64: string): Uint8Array {
+  const binaryString = atob(base64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+}
+
 export default function AddListingScreen() {
   const [form, setForm] = useState({
     title: '',
@@ -179,10 +205,12 @@ export default function AddListingScreen() {
 
   const { user } = useAuthContext();
   const router = useRouter();
-  const { colors } = useTheme(); // Tema eklendi
+  const { colors } = useTheme();
 
-  const pickImage = async () => {
-    if (photos.length >= 5) {
+  // ✅ Çoklu fotoğraf seçimi (max 5)
+  const pickImages = async () => {
+    const remaining = 5 - photos.length;
+    if (remaining <= 0) {
       Alert.alert('Limit', 'En fazla 5 fotoğraf ekleyebilirsiniz');
       return;
     }
@@ -193,29 +221,60 @@ export default function AddListingScreen() {
       return;
     }
 
+    // ✅ allowsMultipleSelection: true
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [4, 3],
+      mediaTypes: ['images'],
+      allowsMultipleSelection: true,
+      selectionLimit: remaining,
       quality: 0.8,
+      // ✅ allowsEditing kaldırıldı - kırpma yok
     });
 
-    if (!result.canceled && result.assets[0].uri) {
-      setPhotos([...photos, result.assets[0].uri]);
+    if (!result.canceled && result.assets.length > 0) {
+      const newPhotos = result.assets.map(asset => asset.uri);
+      setPhotos([...photos, ...newPhotos].slice(0, 5));
     }
   };
 
-  const uploadImage = async (uri: string): Promise<string> => {
-    const response = await fetch(uri);
-    const blob = await response.blob();
-    
-    const filename = `listings/${user?.uid}/${Date.now()}.jpg`;
-    const storageRef = ref(storage, filename);
-    
-    await uploadBytes(storageRef, blob);
-    const downloadURL = await getDownloadURL(storageRef);
-    
-    return downloadURL;
+  const uploadImage = async (uri: string, user: any): Promise<string> => {
+    try {
+      console.log('Fotograf yukleme baslatildi:', uri);
+
+      const base64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: 'base64',
+      });
+
+      const fileExt = uri.split('.').pop()?.toLowerCase() || 'jpg';
+      const mimeType = fileExt === 'png' ? 'image/png' : 'image/jpeg';
+      const filename = `listings/${user?.id}/${Date.now()}.${fileExt}`;
+
+      console.log('Dosya yolu:', filename);
+
+      const { data, error } = await supabase.storage
+        .from('images')
+        .upload(filename, decode(base64), {
+          contentType: mimeType,
+          upsert: false
+        });
+
+      if (error) {
+        console.error('Storage upload error:', error);
+        throw error;
+      }
+
+      console.log('Fotograf yuklendi:', data);
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('images')
+        .getPublicUrl(filename);
+
+      console.log('Public URL:', publicUrl);
+      
+      return publicUrl;
+    } catch (error) {
+      console.error('Upload image error:', error);
+      throw error;
+    }
   };
 
   const handleSubmit = async () => {
@@ -257,24 +316,36 @@ export default function AddListingScreen() {
       // Fotoğrafları yükle
       const photoUrls: string[] = [];
       for (let i = 0; i < photos.length; i++) {
-        const url = await uploadImage(photos[i]);
+        const url = await uploadImage(photos[i], user);
         photoUrls.push(url);
         setUploadProgress(((i + 1) / photos.length) * 100);
       }
 
-      // Firestore'a kaydet
-      await addDoc(collection(db, 'listings'), {
-        ...form,
-        title: form.title.trim(),
-        city: form.city.trim(),
-        district: form.district.trim(),
-        description: form.description.trim(),
-        photos: photoUrls,
-        ownerId: user.uid,
-        status: 'active',
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      });
+      // İlanı veritabanına kaydet
+      const { data, error } = await supabase
+        .from('listings')
+        .insert({
+          title: form.title,
+          species: form.species,
+          breed: form.breed || null,
+          age: form.age,
+          gender: form.gender || null,
+          city: form.city,
+          district: form.district || null,
+          description: form.description,
+          photos: photoUrls,
+          vaccinated: form.vaccinated,
+          neutered: form.neutered,
+          owner_id: user.id,
+          status: 'active'
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Database insert error:', error);
+        throw error;
+      }
 
       Alert.alert('Başarılı', 'İlanınız başarıyla yayınlandı!', [
         { text: 'Tamam', onPress: () => router.push('/(tabs)') }
@@ -295,9 +366,12 @@ export default function AddListingScreen() {
       });
       setPhotos([]);
 
-    } catch (error) {
-      console.error('İlan ekleme hatası:', error);
-      Alert.alert('Hata', 'İlan eklenirken bir hata oluştu. Lütfen tekrar deneyin.');
+    } catch (error: any) {
+      console.error('Ilan ekleme hatasi:', error);
+      Alert.alert(
+        'Hata', 
+        `İlan eklenirken bir hata oluştu: ${error.message || 'Bilinmeyen hata'}`
+      );
     } finally {
       setUploading(false);
       setUploadProgress(0);
@@ -355,7 +429,7 @@ export default function AddListingScreen() {
         <View style={[styles.header, { backgroundColor: colors.card }]}>
           <Text style={[styles.title, { color: colors.text }]}>İlan Ekle</Text>
           <Text style={[styles.subtitle, { color: colors.secondaryText }]}>
-            
+            Yeni bir sahiplendirme ilanı oluşturun
           </Text>
         </View>
 
@@ -383,12 +457,14 @@ export default function AddListingScreen() {
                   backgroundColor: colors.inputBackground
                 }
               ]} 
-              onPress={pickImage}
+              onPress={pickImages}
               disabled={photos.length >= 5}
               testID="add-photo-button"
             >
               <Ionicons name="camera" size={32} color={colors.secondaryText} />
-              <Text style={[styles.addPhotoText, { color: colors.secondaryText }]}>Fotoğraf Ekle</Text>
+              <Text style={[styles.addPhotoText, { color: colors.secondaryText }]}>
+                {photos.length === 0 ? 'Fotoğraf Ekle' : 'Daha Fazla Ekle'}
+              </Text>
             </TouchableOpacity>
 
             {photos.map((photo, index) => (
@@ -767,7 +843,8 @@ const styles = StyleSheet.create({
   },
   addPhotoText: {
     marginTop: 8,
-    fontSize: 14,
+    fontSize: 12,
+    textAlign: 'center',
   },
   photoContainer: {
     position: 'relative',
@@ -818,7 +895,6 @@ const styles = StyleSheet.create({
   disabled: {
     opacity: 0.5,
   },
-  // Modal Stilleri
   modalContainer: {
     flex: 1,
     justifyContent: 'flex-end',

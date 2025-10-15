@@ -1,15 +1,6 @@
+import { db, supabase } from '@/lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  query,
-  serverTimestamp,
-  setDoc,
-  where
-} from 'firebase/firestore';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -25,7 +16,6 @@ import {
 } from 'react-native';
 import { useAuthContext } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { db } from '../firebase';
 import { IListing } from '../types/types';
 
 const { width, height } = Dimensions.get('window');
@@ -39,7 +29,7 @@ interface Props {
 interface OwnerInfo {
   id: string;
   name: string;
-  photoURL?: string;
+  photo_url?: string;
 }
 
 export default function ListingModal({ visible, listing, onClose }: Props) {
@@ -64,13 +54,19 @@ export default function ListingModal({ visible, listing, onClose }: Props) {
     const loadOwnerInfo = async () => {
       setLoadingOwner(true);
       try {
-        const ownerDoc = await getDoc(doc(db, 'users', listing.ownerId));
-        if (ownerDoc.exists()) {
-          const data = ownerDoc.data();
+        const { data, error } = await supabase
+          .from('users')
+          .select('id, name, photo_url') // FİKS: photoURL yerine photo_url
+          .eq('id', listing.ownerId)
+          .maybeSingle();
+
+        if (error) throw error;
+
+        if (data) {
           setOwnerInfo({
-            id: ownerDoc.id,
+            id: data.id,
             name: data.name || 'Kullanıcı',
-            photoURL: data.photoURL
+            photo_url: data.photo_url,
           });
         }
       } catch (error) {
@@ -83,7 +79,6 @@ export default function ListingModal({ visible, listing, onClose }: Props) {
     loadOwnerInfo();
   }, [listing, visible]);
 
-  // Full screen açıldığında scroll pozisyonunu ayarla
   useEffect(() => {
     if (fullScreenVisible && fullScreenScrollRef.current) {
       setTimeout(() => {
@@ -120,90 +115,73 @@ export default function ListingModal({ visible, listing, onClose }: Props) {
 
   if (!listing) return null;
 
-  const isOwner = user?.uid === listing.ownerId;
+  const isOwner = user?.id === listing.ownerId;
 
   const handleContact = async () => {
     if (!user) {
       Alert.alert('Giriş Gerekli', 'Mesaj göndermek için giriş yapmalısınız', [
         { text: 'İptal', style: 'cancel' },
         { text: 'Giriş Yap', onPress: () => {
-          onClose();
-          router.push('/auth/login');
+          onClose()
+          router.push('/auth/login')
         }}
-      ]);
-      return;
+      ])
+      return
     }
 
     if (!userData) {
-      Alert.alert('Hata', 'Kullanıcı bilgileri yüklenemedi');
-      return;
+      Alert.alert('Hata', 'Kullanıcı bilgileri yüklenemedi')
+      return
     }
 
-    setLoading(true);
+    setLoading(true)
 
     try {
-      const ownerDoc = await getDocs(
-        query(collection(db, 'users'), where('__name__', '==', listing.ownerId))
-      );
+      const convos = await db.conversations.getByUserId(user.id)
+      let existingConvoId: string | null = null
 
-      if (ownerDoc.empty) {
-        Alert.alert('Hata', 'İlan sahibi bulunamadı');
-        setLoading(false);
-        return;
-      }
-
-      const ownerData = ownerDoc.docs[0].data();
-
-      const conversationsQuery = query(
-        collection(db, 'conversations'),
-        where('participants', 'array-contains', user.uid)
-      );
-
-      const snapshot = await getDocs(conversationsQuery);
-      let existingConvoId: string | null = null;
-
-      snapshot.forEach((doc) => {
-        const data = doc.data();
-        if (data.participants.includes(listing.ownerId)) {
-          existingConvoId = doc.id;
+      for (const convo of convos) {
+        if (convo.participants.includes(listing.ownerId)) {
+          existingConvoId = convo.id
+          break
         }
-      });
+      }
 
       if (existingConvoId) {
-        onClose();
-        router.push(`/chat/${existingConvoId}`);
+        onClose()
+        router.push(`/chat/${existingConvoId}`)
       } else {
-        const newConvoRef = doc(collection(db, 'conversations'));
-        
-        await setDoc(newConvoRef, {
-          participants: [user.uid, listing.ownerId],
-          participantNames: {
-            [user.uid]: userData.name,
-            [listing.ownerId]: ownerData.name || 'Kullanıcı'
-          },
-          participantPhotos: {
-            [user.uid]: (userData as any).photoURL || '',
-            [listing.ownerId]: ownerData.photoURL || ''
-          },
-          lastMessage: '',
-          lastMessageTime: serverTimestamp(),
-          unreadCount: {
-            [user.uid]: 0,
-            [listing.ownerId]: 0
-          },
-          createdAt: serverTimestamp()
-        });
+        const ownerData = await db.users.getById(listing.ownerId)
 
-        onClose();
-        router.push(`/chat/${newConvoRef.id}`);
+        const newConvo = await db.conversations.create({
+          participants: [user.id, listing.ownerId],
+          participant_names: {
+            [user.id]: userData.name,
+            [listing.ownerId]: ownerData?.name || 'Kullanıcı'
+          },
+          participant_photos: {
+            [user.id]: userData.photoURL || '',
+            [listing.ownerId]: ownerData?.photo_url || ''
+          },
+          last_message: '',
+          last_message_time: new Date().toISOString(),
+          created_at: new Date().toISOString(),
+          unread_count: {
+            [user.id]: 0,
+            [listing.ownerId]: 0
+          }
+        })
+
+        onClose()
+        router.push(`/chat/${newConvo.id}`)
       }
     } catch (error) {
-      console.error('İletişim hatası:', error);
-      Alert.alert('Hata', 'Bir sorun oluştu, lütfen tekrar deneyin');
+      console.error('Contact error:', error)
+      Alert.alert('Hata', 'Bir sorun oluştu, lütfen tekrar deneyin')
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
   const handleOwnerPress = () => {
     if (ownerInfo) {
@@ -212,7 +190,6 @@ export default function ListingModal({ visible, listing, onClose }: Props) {
     }
   };
 
-  // Full Screen Image Component
   const FullScreenImageView = () => {
     if (!fullScreenVisible) return null;
     
@@ -225,7 +202,6 @@ export default function ListingModal({ visible, listing, onClose }: Props) {
         statusBarTranslucent
       >
         <View style={styles.fullScreenContainer}>
-          {/* Header */}
           <View style={styles.fullScreenHeader}>
             <TouchableOpacity 
               onPress={closeFullScreen} 
@@ -239,7 +215,6 @@ export default function ListingModal({ visible, listing, onClose }: Props) {
             </Text>
           </View>
 
-          {/* Image Swiper */}
           <ScrollView
             ref={fullScreenScrollRef}
             horizontal
@@ -250,25 +225,15 @@ export default function ListingModal({ visible, listing, onClose }: Props) {
           >
             {listing?.photos?.map((photo, index) => (
               <View key={index} style={styles.fullScreenImageContainer}>
-                <ScrollView
-                  maximumZoomScale={3}
-                  minimumZoomScale={1}
-                  showsHorizontalScrollIndicator={false}
-                  showsVerticalScrollIndicator={false}
-                  contentContainerStyle={styles.zoomContainer}
-                  centerContent
-                >
-                  <Image
-                    source={{ uri: photo }}
-                    style={styles.fullScreenImage}
-                    resizeMode="contain"
-                  />
-                </ScrollView>
+                <Image
+                  source={{ uri: photo }}
+                  style={styles.fullScreenImage}
+                  resizeMode="contain"
+                />
               </View>
             ))}
           </ScrollView>
 
-          {/* Thumbnail Indicator */}
           {listing?.photos && listing.photos.length > 1 && (
             <View style={styles.fullScreenThumbnailContainer}>
               <ScrollView 
@@ -308,14 +273,12 @@ export default function ListingModal({ visible, listing, onClose }: Props) {
         onRequestClose={onClose}
       >
         <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
-          {/* Header */}
           <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
             <View style={styles.headerContent}>
               <Text style={[styles.title, { color: colors.text }]} numberOfLines={2}>
                 {listing.title}
               </Text>
               
-              {/* İlan Sahibi Bilgisi */}
               {loadingOwner ? (
                 <View style={styles.ownerLoading}>
                   <ActivityIndicator size="small" color={colors.secondaryText} />
@@ -326,9 +289,9 @@ export default function ListingModal({ visible, listing, onClose }: Props) {
                   onPress={handleOwnerPress}
                   activeOpacity={0.7}
                 >
-                  {ownerInfo.photoURL ? (
+                  {ownerInfo.photo_url ? (
                     <Image 
-                      source={{ uri: ownerInfo.photoURL }} 
+                      source={{ uri: ownerInfo.photo_url }} 
                       style={styles.ownerPhoto}
                     />
                   ) : (
@@ -361,7 +324,6 @@ export default function ListingModal({ visible, listing, onClose }: Props) {
           </View>
 
           <ScrollView showsVerticalScrollIndicator={false}>
-            {/* Fotoğraf Carousel */}
             {listing.photos && listing.photos.length > 0 ? (
               <View style={styles.carousel}>
                 <TouchableOpacity 
@@ -375,7 +337,6 @@ export default function ListingModal({ visible, listing, onClose }: Props) {
                     resizeMode="cover"
                     testID="main-image"
                   />
-                  {/* Zoom hint */}
                   <View style={styles.zoomHint}>
                     <Ionicons name="expand" size={20} color="white" />
                     <Text style={styles.zoomHintText}>Fotoğrafa dokun</Text>
@@ -417,9 +378,7 @@ export default function ListingModal({ visible, listing, onClose }: Props) {
               </View>
             )}
 
-            {/* İlan Detayları */}
             <View style={[styles.detailsCard, { backgroundColor: colors.card }]}>
-              {/* Bilgi Kartları Grid */}
               <View style={styles.infoGrid}>
                 <View style={[styles.infoCard, { backgroundColor: colors.inputBackground }]}>
                   <Ionicons name="paw" size={24} color={colors.primary} />
@@ -462,7 +421,6 @@ export default function ListingModal({ visible, listing, onClose }: Props) {
                 )}
               </View>
 
-              {/* Konum Bölümü */}
               <View style={styles.section}>
                 <Text style={[styles.sectionTitle, { color: colors.text }]}>
                   <Ionicons name="location" size={18} color={colors.text} /> Konum
@@ -482,7 +440,6 @@ export default function ListingModal({ visible, listing, onClose }: Props) {
                 </View>
               </View>
 
-              {/* Sağlık Durumu */}
               <View style={styles.section}>
                 <Text style={[styles.sectionTitle, { color: colors.text }]}>
                   <Ionicons name="medical" size={18} color={colors.text} /> Sağlık Durumu
@@ -540,7 +497,6 @@ export default function ListingModal({ visible, listing, onClose }: Props) {
                 </View>
               </View>
 
-              {/* Açıklama */}
               {listing.description && (
                 <View style={styles.section}>
                   <Text style={[styles.sectionTitle, { color: colors.text }]}>
@@ -556,7 +512,6 @@ export default function ListingModal({ visible, listing, onClose }: Props) {
             </View>
           </ScrollView>
 
-          {/* İletişim Butonu */}
           {!isOwner && (
             <View style={[styles.footer, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
               <TouchableOpacity 
@@ -586,7 +541,6 @@ export default function ListingModal({ visible, listing, onClose }: Props) {
         </View>
       </Modal>
 
-      {/* Full Screen Image Modal */}
       <FullScreenImageView />
     </>
   );
@@ -808,7 +762,6 @@ const styles = StyleSheet.create({
     fontSize: 16, 
     fontWeight: '600',
   },
-  // Full Screen Styles
   fullScreenContainer: {
     flex: 1,
     backgroundColor: 'black',
@@ -844,12 +797,6 @@ const styles = StyleSheet.create({
   fullScreenImageContainer: {
     width: width,
     height: height,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  zoomContainer: {
-    minWidth: width,
-    minHeight: height,
     justifyContent: 'center',
     alignItems: 'center',
   },

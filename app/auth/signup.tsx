@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -17,7 +18,7 @@ export default function SignupScreen() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [userName, setUserName] = useState('');
-  const [username, setUsername] = useState(''); // YENİ: Kullanıcı adı alanı
+  const [username, setUsername] = useState('');
   const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(null);
   const [checkingUsername, setCheckingUsername] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -26,7 +27,6 @@ export default function SignupScreen() {
   const { colors } = useTheme();
   const router = useRouter();
 
-  // YENİ: Username kontrol fonksiyonu
   const handleUsernameCheck = async () => {
     if (!username.trim()) {
       setUsernameAvailable(null);
@@ -91,14 +91,13 @@ export default function SignupScreen() {
       return;
     }
 
-    // Username kontrol edilmemişse kontrol et
     if (usernameAvailable === null) {
-      Alert.alert('Uyarı', 'Lütfen kullanıcı adını kontrol edin');
+      Alert.alert('Uyarı', 'Lütfen kullanıcı adınızı kontrol edin');
       return;
     }
 
     setLoading(true);
-    const result = await signUp(email, password, userName, username); // YENİ: username parametresi eklendi
+    const result = await signUp(email, password, userName, username);
     setLoading(false);
 
     if (result.success) {
@@ -110,9 +109,11 @@ export default function SignupScreen() {
   };
 
   const styles = StyleSheet.create({
-    container: {
-      flex: 1,
+    scrollContainer: {
+      flexGrow: 1,
       justifyContent: 'center',
+    },
+    container: {
       padding: 20,
       backgroundColor: colors.background,
     },
@@ -133,15 +134,20 @@ export default function SignupScreen() {
       color: colors.text,
       fontSize: 16,
     },
-    // YENİ: Username container stili
     usernameContainer: {
       position: 'relative',
+      marginBottom: 15,
     },
-    // YENİ: Username input stili
     usernameInput: {
-      paddingRight: 100, // Buton için yer bırak
+      backgroundColor: colors.inputBackground,
+      padding: 15,
+      paddingRight: 100,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.border,
+      color: colors.text,
+      fontSize: 16,
     },
-    // YENİ: Kontrol butonu stili
     checkButton: {
       position: 'absolute',
       right: 10,
@@ -152,11 +158,10 @@ export default function SignupScreen() {
       backgroundColor: colors.primary,
     },
     checkButtonText: {
-      color: 'white',
+      color: colors.card,
       fontSize: 12,
       fontWeight: '600',
     },
-    // YENİ: Kullanılabilirlik metni stili
     availabilityText: {
       fontSize: 12,
       marginTop: -10,
@@ -164,15 +169,15 @@ export default function SignupScreen() {
       marginLeft: 5,
     },
     available: {
-      color: '#4CAF50',
+      color: colors.success,
       fontWeight: '600',
     },
     unavailable: {
-      color: '#f44336',
+      color: colors.danger,
       fontWeight: '600',
     },
     button: {
-      backgroundColor: colors.success,
+      backgroundColor: colors.primary,
       padding: 15,
       borderRadius: 10,
       alignItems: 'center',
@@ -186,6 +191,7 @@ export default function SignupScreen() {
     linkButton: {
       marginTop: 20,
       alignItems: 'center',
+      marginBottom: 30,
     },
     linkText: {
       color: colors.primary,
@@ -195,106 +201,110 @@ export default function SignupScreen() {
   });
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Kayıt Ol</Text>
-      
-      <TextInput
-        style={styles.input}
-        placeholder="Ad Soyad *"
-        placeholderTextColor={colors.secondaryText}
-        value={userName}
-        onChangeText={setUserName}
-        autoCapitalize="words"
-      />
-      
-      {/* YENİ: Kullanıcı Adı Alanı */}
-      <View style={styles.usernameContainer}>
+    <ScrollView 
+      contentContainerStyle={styles.scrollContainer}
+      style={{ backgroundColor: colors.background }}
+      keyboardShouldPersistTaps="handled"
+    >
+      <View style={styles.container}>
+        <Text style={styles.title}>Kayıt Ol</Text>
+        
         <TextInput
-          style={[styles.input, styles.usernameInput]}
-          placeholder="Kullanıcı Adı *"
+          style={styles.input}
+          placeholder="Ad Soyad"
           placeholderTextColor={colors.secondaryText}
-          value={username}
-          onChangeText={(text) => {
-            setUsername(text);
-            setUsernameAvailable(null);
-          }}
-          autoCapitalize="none"
-          autoCorrect={false}
+          value={userName}
+          onChangeText={setUserName}
+          autoCapitalize="words"
         />
-        {username.length > 0 && (
-          <TouchableOpacity 
-            style={styles.checkButton}
-            onPress={handleUsernameCheck}
-            disabled={checkingUsername || username.length < 3}
-          >
-            {checkingUsername ? (
-              <ActivityIndicator size="small" color="white" />
-            ) : (
-              <Text style={styles.checkButtonText}>
-                {username.length < 3 ? 'Min 3' : 'Kontrol'}
-              </Text>
-            )}
-          </TouchableOpacity>
+        
+        <View style={styles.usernameContainer}>
+          <TextInput
+            style={styles.usernameInput}
+            placeholder="Kullanıcı Adı"
+            placeholderTextColor={colors.secondaryText}
+            value={username}
+            onChangeText={(text) => {
+              setUsername(text);
+              setUsernameAvailable(null);
+            }}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          {username.length > 0 && (
+            <TouchableOpacity 
+              style={styles.checkButton}
+              onPress={handleUsernameCheck}
+              disabled={checkingUsername || username.length < 3}
+            >
+              {checkingUsername ? (
+                <ActivityIndicator size="small" color={colors.card} />
+              ) : (
+                <Text style={styles.checkButtonText}>
+                  {username.length < 3 ? 'Min 3' : 'Kontrol'}
+                </Text>
+              )}
+            </TouchableOpacity>
+          )}
+        </View>
+        
+        {usernameAvailable !== null && (
+          <Text style={[
+            styles.availabilityText,
+            usernameAvailable ? styles.available : styles.unavailable
+          ]}>
+            {usernameAvailable ? '✓ Bu kullanıcı adı müsait' : '✗ Bu kullanıcı adı alınmış'}
+          </Text>
         )}
+        
+        <TextInput
+          style={styles.input}
+          placeholder="E-posta"
+          placeholderTextColor={colors.secondaryText}
+          value={email}
+          onChangeText={setEmail}
+          autoCapitalize="none"
+          keyboardType="email-address"
+        />
+        
+        <TextInput
+          style={styles.input}
+          placeholder="Şifre"
+          placeholderTextColor={colors.secondaryText}
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+        />
+        
+        <TextInput
+          style={styles.input}
+          placeholder="Şifre Tekrar"
+          placeholderTextColor={colors.secondaryText}
+          value={confirmPassword}
+          onChangeText={setConfirmPassword}
+          secureTextEntry
+        />
+        
+        <TouchableOpacity 
+          style={styles.button} 
+          onPress={handleSignup}
+          disabled={loading || usernameAvailable === false}
+          testID="signup-button"
+        >
+          {loading ? (
+            <ActivityIndicator color={colors.card} />
+          ) : (
+            <Text style={styles.buttonText}>Kayıt Ol</Text>
+          )}
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={styles.linkButton}
+          onPress={() => router.push('/auth/login')}
+        >
+          <Text style={styles.linkText}>Zaten hesabın var mı? Giriş Yap</Text>
+        </TouchableOpacity>
       </View>
-      
-      {/* YENİ: Kullanılabilirlik durumu */}
-      {usernameAvailable !== null && (
-        <Text style={[
-          styles.availabilityText,
-          usernameAvailable ? styles.available : styles.unavailable
-        ]}>
-          {usernameAvailable ? '✓ Bu kullanıcı adı müsait' : '✗ Bu kullanıcı adı alınmış'}
-        </Text>
-      )}
-      
-      <TextInput
-        style={styles.input}
-        placeholder="E-posta *"
-        placeholderTextColor={colors.secondaryText}
-        value={email}
-        onChangeText={setEmail}
-        autoCapitalize="none"
-        keyboardType="email-address"
-      />
-      
-      <TextInput
-        style={styles.input}
-        placeholder="Şifre *"
-        placeholderTextColor={colors.secondaryText}
-        value={password}
-        onChangeText={setPassword}
-        secureTextEntry
-      />
-      
-      <TextInput
-        style={styles.input}
-        placeholder="Şifre Tekrar *"
-        placeholderTextColor={colors.secondaryText}
-        value={confirmPassword}
-        onChangeText={setConfirmPassword}
-        secureTextEntry
-      />
-      
-      <TouchableOpacity 
-        style={styles.button} 
-        onPress={handleSignup}
-        disabled={loading || usernameAvailable === false}
-        testID="signup-button"
-      >
-        {loading ? (
-          <ActivityIndicator color={colors.card} />
-        ) : (
-          <Text style={styles.buttonText}>Kayıt Ol</Text>
-        )}
-      </TouchableOpacity>
-      
-      <TouchableOpacity 
-        style={styles.linkButton}
-        onPress={() => router.push('/auth/login')}
-      >
-        <Text style={styles.linkText}>Zaten hesabın var mı? Giriş Yap</Text>
-      </TouchableOpacity>
-    </View>
+    </ScrollView>
   );
 }

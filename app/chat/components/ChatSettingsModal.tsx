@@ -1,16 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import {
-  collection,
-  deleteDoc,
-  doc,
-  getDoc,
-  getDocs,
-  onSnapshot,
-  query,
-  updateDoc,
-  where
-} from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import {
   Alert,
@@ -25,7 +14,7 @@ import {
   View
 } from 'react-native';
 import { useTheme } from '../../../contexts/ThemeContext';
-import { db } from '../../../firebase';
+import { supabase } from '../../../lib/supabase';
 
 interface Props {
   visible: boolean;
@@ -35,16 +24,21 @@ interface Props {
   otherUser?: {
     id: string;
     name: string;
-    photo?: string;
+    photo?: string | null;
   };
   onSettingsChange?: () => void;
 }
 
 interface SharedMedia {
   id: string;
-  url: string;
-  timestamp: any;
-  senderId: string;
+  image_url: string;
+  timestamp: string; // ✅ created_at yerine timestamp
+  sender_id: string;
+}
+
+interface ConversationSettings {
+  readReceipts: boolean;
+  muted: boolean;
 }
 
 export default function ChatSettingsModal({
@@ -66,85 +60,126 @@ export default function ChatSettingsModal({
     if (!visible) return;
 
     loadSettings();
-    
-    const mediaQuery = query(
-      collection(db, 'conversations', conversationId, 'messages'),
-      where('imageUrl', '!=', null)
-    );
+    loadSharedMedia();
 
-    const unsubscribe = onSnapshot(mediaQuery, (snapshot) => {
-      const media: SharedMedia[] = [];
-      snapshot.forEach((doc) => {
-        const data = doc.data();
-        if (data.imageUrl) {
-          media.push({
-            id: doc.id,
-            url: data.imageUrl,
-            timestamp: data.timestamp,
-            senderId: data.senderId
-          });
+    const subscription = supabase
+      .channel(`conversation_${conversationId}`)
+      .on(
+        'postgres_changes',
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'messages', 
+          filter: `conversation_id=eq.${conversationId}` 
+        },
+        (payload) => {
+          if (payload.new && (payload.new as any).image_url) {
+            loadSharedMedia();
+          }
         }
-      });
+      )
+      .subscribe();
 
-      media.sort((a, b) => {
-        const timeA = a.timestamp?.toMillis?.() || 0;
-        const timeB = b.timestamp?.toMillis?.() || 0;
-        return timeB - timeA;
-      });
-
-      setSharedMedia(media);
-    });
-
-    return () => unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+    };
   }, [visible, conversationId]);
 
-  // Diğer kullanıcının gerçek profil fotoğrafını yükle
   useEffect(() => {
-    if (!visible || !otherUser) return;
+    if (otherUser?.id) {
+      loadOtherUserPhoto();
+    }
+  }, [otherUser?.id]);
 
-    const loadOtherUserPhoto = async () => {
-      try {
-        const userDoc = await getDoc(doc(db, 'users', otherUser.id));
-        if (userDoc.exists()) {
-          const userData = userDoc.data();
-          setOtherUserRealPhoto(userData.photoURL || null);
-        }
-      } catch (error) {
-        console.error('Kullanıcı fotoğrafı yüklenirken hata:', error);
-      }
-    };
-
-    loadOtherUserPhoto();
-  }, [visible, otherUser]);
-
-  const loadSettings = async () => {
+  const loadOtherUserPhoto = async () => {
     try {
-      const convoDoc = await getDocs(
-        query(collection(db, 'conversations'), where('__name__', '==', conversationId))
-      );
+      const { data, error } = await supabase
+        .from('users')
+        .select('photo_url')
+        .eq('id', otherUser!.id)
+        .single();
 
-      if (!convoDoc.empty) {
-        const data = convoDoc.docs[0].data();
-        const userSettings = data.settings?.[currentUserId] || {};
-        setReadReceipts(userSettings.readReceipts ?? true);
-        setMuted(userSettings.muted ?? false);
+      if (error) throw error;
+
+      if (data?.photo_url) {
+        setOtherUserRealPhoto(data.photo_url);
       }
-    } catch (error) {
-      console.error('Ayarlar yükleme hatası:', error);
+    } catch (err) {
+      console.error('User photo fetch error:', err);
     }
   };
 
-  const updateSetting = async (key: string, value: boolean) => {
+  // ✅ DÜZELTİLDİ: timestamp kullanıldı
+  const loadSharedMedia = async () => {
     try {
-      await updateDoc(doc(db, 'conversations', conversationId), {
-        [`settings.${currentUserId}.${key}`]: value
-      });
-      
-      if (onSettingsChange) {
-        onSettingsChange();
-      }
-    } catch (error) {
-      console.error('Ayar güncelleme hatası:', error);
+      const { data, error } = await supabase
+        .from('messages')
+        .select('id, image_url, timestamp, sender_id')
+        .eq('conversation_id', conversationId)
+        .not('image_url', 'is', null)
+        .order('timestamp', { ascending: false });
+
+      if (error) throw error;
+
+      setSharedMedia(data || []);
+    } catch (err) {
+      console.error('Shared media fetch error:', err);
+    }
+  };
+
+  const loadSettings = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('conversations')
+        .select('settings')
+        .eq('id', conversationId)
+        .single();
+
+      if (error) throw error;
+
+      const userSettings: ConversationSettings = data?.settings?.[currentUserId] || {
+        readReceipts: true,
+        muted: false
+      };
+
+      setReadReceipts(userSettings.readReceipts);
+      setMuted(userSettings.muted);
+    } catch (err) {
+      console.error('Settings fetch error:', err);
+    }
+  };
+
+  const updateSetting = async (key: keyof ConversationSettings, value: boolean) => {
+    try {
+      const { data: currentData, error: fetchError } = await supabase
+        .from('conversations')
+        .select('settings')
+        .eq('id', conversationId)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      const updatedSettings = {
+        ...currentData.settings,
+        [currentUserId]: {
+          ...currentData.settings?.[currentUserId],
+          [key]: value
+        }
+      };
+
+       const { error } = await supabase
+        .from('conversations')
+        .update({ 
+          settings: updatedSettings
+        })
+        .eq('id', conversationId);
+
+      if (error) throw error;
+
+      if (onSettingsChange) onSettingsChange();
+    } catch (err) {
+      console.error('Setting update error:', err);
+      Alert.alert('Hata', 'Ayar güncellenirken bir sorun oluştu');
     }
   };
 
@@ -158,41 +193,52 @@ export default function ChatSettingsModal({
     updateSetting('muted', value);
   };
 
-  // Sohbeti silme fonksiyonu
   const handleDeleteConversation = () => {
     Alert.alert(
       'Sohbeti Sil',
       'Bu sohbeti silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.',
       [
-        {
-          text: 'İptal',
-          style: 'cancel',
-        },
+        { text: 'İptal', style: 'cancel' },
         {
           text: 'Sil',
           style: 'destructive',
           onPress: async () => {
             try {
-              await deleteDoc(doc(db, 'conversations', conversationId));
+              const { error: messagesError } = await supabase
+                .from('messages')
+                .delete()
+                .eq('conversation_id', conversationId);
+
+              if (messagesError) throw messagesError;
+
+              const { error } = await supabase
+                .from('conversations')
+                .delete()
+                .eq('id', conversationId);
+
+              if (error) throw error;
+
               onClose();
-              router.back(); // Sohbet ekranından çık
-            } catch (error) {
-              console.error('Sohbet silme hatası:', error);
+              router.back();
+            } catch (err) {
+              console.error('Conversation delete error:', err);
               Alert.alert('Hata', 'Sohbet silinemedi');
             }
-          },
-        },
+          }
+        }
       ]
     );
   };
 
-  // otherUser undefined ise modal'ı gösterme
+  const handleMediaPress = (media: SharedMedia) => {
+    Alert.alert('Medya', 'Bu görseli görüntülemek için full-screen modal açılacak');
+  };
+
   if (!otherUser) {
     return null;
   }
 
-  // Gerçek zamanlı fotoğraf varsa onu kullan, yoksa prop'tan gelen fotoğrafı kullan
-  const displayPhoto = otherUserRealPhoto !== null ? otherUserRealPhoto : otherUser.photo;
+  const displayPhoto = otherUserRealPhoto || otherUser.photo;
 
   return (
     <Modal
@@ -202,7 +248,6 @@ export default function ChatSettingsModal({
       onRequestClose={onClose}
     >
       <View style={[styles.container, { backgroundColor: colors.background }]}>
-        {/* Header */}
         <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
           <Text style={[styles.headerTitle, { color: colors.text }]}>Sohbet Ayarları</Text>
           <TouchableOpacity onPress={onClose} style={styles.closeButton}>
@@ -211,13 +256,11 @@ export default function ChatSettingsModal({
         </View>
 
         <ScrollView>
-          {/* Kullanıcı Bilgisi */}
           <View style={[styles.userSection, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
             {displayPhoto ? (
               <Image 
                 source={{ uri: displayPhoto }} 
                 style={styles.userPhoto}
-                key={displayPhoto} // Force re-render when photo changes
               />
             ) : (
               <View style={[styles.userPhotoPlaceholder, { backgroundColor: colors.primary }]}>
@@ -229,8 +272,7 @@ export default function ChatSettingsModal({
             <Text style={[styles.userName, { color: colors.text }]}>{otherUser.name}</Text>
           </View>
 
-          {/* Ayarlar */}
-          <View style={[styles.settingsSection, { backgroundColor: colors.card, borderTopColor: colors.border, borderBottomColor: colors.border }]}>
+          <View style={[styles.settingsSection, { backgroundColor: colors.card }]}>
             <Text style={[styles.sectionTitle, { color: colors.text }]}>Ayarlar</Text>
 
             <View style={[styles.settingItem, { borderBottomColor: colors.border }]}>
@@ -270,12 +312,44 @@ export default function ChatSettingsModal({
             </View>
           </View>
 
-          {/* Tehlikeli İşlemler */}
-          <View style={[styles.dangerSection, { backgroundColor: colors.card, borderTopColor: colors.border, borderBottomColor: colors.border }]}>
+          <View style={[styles.mediaSection, { backgroundColor: colors.card }]}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>
+              Paylaşılan Medya ({sharedMedia.length})
+            </Text>
+            
+            {sharedMedia.length > 0 ? (
+              <FlatList
+                data={sharedMedia}
+                keyExtractor={(item) => item.id}
+                numColumns={3}
+                scrollEnabled={false}
+                renderItem={({ item }) => (
+                  <TouchableOpacity 
+                    style={styles.mediaItem}
+                    onPress={() => handleMediaPress(item)}
+                  >
+                    <Image 
+                      source={{ uri: item.image_url }} 
+                      style={styles.mediaImage} 
+                    />
+                  </TouchableOpacity>
+                )}
+              />
+            ) : (
+              <View style={styles.emptyMedia}>
+                <Ionicons name="image-outline" size={48} color={colors.border} />
+                <Text style={[styles.emptyMediaText, { color: colors.secondaryText }]}>
+                  Henüz paylaşılan görsel yok
+                </Text>
+              </View>
+            )}
+          </View>
+
+          <View style={[styles.dangerSection, { backgroundColor: colors.card }]}>
             <Text style={[styles.sectionTitle, { color: colors.text }]}>Tehlikeli İşlemler</Text>
             
             <TouchableOpacity 
-              style={[styles.dangerItem, { borderBottomColor: colors.border }]}
+              style={[styles.dangerItem]}
               onPress={handleDeleteConversation}
             >
               <View style={styles.dangerInfo}>
@@ -292,34 +366,6 @@ export default function ChatSettingsModal({
               <Ionicons name="chevron-forward" size={20} color={colors.secondaryText} />
             </TouchableOpacity>
           </View>
-
-          {/* Paylaşılan Medya */}
-          <View style={[styles.mediaSection, { backgroundColor: colors.card, borderTopColor: colors.border, borderBottomColor: colors.border }]}>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>
-              Paylaşılan Medya ({sharedMedia.length})
-            </Text>
-            
-            {sharedMedia.length > 0 ? (
-              <FlatList
-                data={sharedMedia}
-                keyExtractor={(item) => item.id}
-                numColumns={3}
-                scrollEnabled={false}
-                renderItem={({ item }) => (
-                  <View style={styles.mediaItem}>
-                    <Image source={{ uri: item.url }} style={styles.mediaImage} />
-                  </View>
-                )}
-              />
-            ) : (
-              <View style={styles.emptyMedia}>
-                <Ionicons name="image-outline" size={48} color={colors.border} />
-                <Text style={[styles.emptyMediaText, { color: colors.secondaryText }]}>
-                  Henüz paylaşılan görsel yok
-                </Text>
-              </View>
-            )}
-          </View>
         </ScrollView>
       </View>
     </Modal>
@@ -327,9 +373,7 @@ export default function ChatSettingsModal({
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
+  container: { flex: 1 },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -338,13 +382,8 @@ const styles = StyleSheet.create({
     paddingTop: 60,
     borderBottomWidth: 1,
   },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-  },
-  closeButton: {
-    padding: 4,
-  },
+  headerTitle: { fontSize: 20, fontWeight: '600' },
+  closeButton: { padding: 4 },
   userSection: {
     alignItems: 'center',
     padding: 32,
@@ -369,19 +408,21 @@ const styles = StyleSheet.create({
     fontSize: 32,
     fontWeight: 'bold',
   },
-  userName: {
-    fontSize: 20,
-    fontWeight: '600',
-  },
+  userName: { fontSize: 20, fontWeight: '600' },
   settingsSection: {
     marginTop: 12,
     borderTopWidth: 1,
     borderBottomWidth: 1,
+    borderTopColor: '#E5E5E5',
+    borderBottomColor: '#E5E5E5',
   },
   dangerSection: {
     marginTop: 12,
     borderTopWidth: 1,
     borderBottomWidth: 1,
+    borderTopColor: '#E5E5E5',
+    borderBottomColor: '#E5E5E5',
+    marginBottom: 20,
   },
   sectionTitle: {
     fontSize: 16,
@@ -402,23 +443,18 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 12,
   },
-  settingTextContainer: {
-    flex: 1,
-  },
+  settingTextContainer: { flex: 1 },
   settingLabel: {
     fontSize: 16,
     fontWeight: '500',
     marginBottom: 4,
   },
-  settingDescription: {
-    fontSize: 13,
-  },
+  settingDescription: { fontSize: 13 },
   dangerItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: 16,
-    borderBottomWidth: 1,
   },
   dangerInfo: {
     flexDirection: 'row',
@@ -426,21 +462,19 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 12,
   },
-  dangerTextContainer: {
-    flex: 1,
-  },
+  dangerTextContainer: { flex: 1 },
   dangerLabel: {
     fontSize: 16,
     fontWeight: '500',
     marginBottom: 4,
   },
-  dangerDescription: {
-    fontSize: 13,
-  },
+  dangerDescription: { fontSize: 13 },
   mediaSection: {
     marginTop: 12,
     borderTopWidth: 1,
     borderBottomWidth: 1,
+    borderTopColor: '#E5E5E5',
+    borderBottomColor: '#E5E5E5',
     paddingBottom: 16,
   },
   mediaItem: {

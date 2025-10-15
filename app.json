@@ -8,6 +8,7 @@
     "scheme": "evimibul",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    "jsEngine": "hermes",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.trkntgce.evimibul"
@@ -43,10 +44,10 @@
         }
       ]
     ],
-    "experiments": {
-      "typedRoutes": true,
-      "reactCompiler": true
-    },
+    // "experiments": {
+    //   "typedRoutes": true,
+    //   "reactCompiler": true
+    // },
     "extra": {
       "router": {},
       "eas": {

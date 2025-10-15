@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
-import { collection, doc, getDoc, onSnapshot, or, query, where } from 'firebase/firestore';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -9,24 +9,28 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
-  View
+  View,
 } from 'react-native';
 import { useAuthContext } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
-import { db } from '../../firebase';
+import { db, subscriptions, supabase } from '../../lib/supabase';
 
 interface Conversation {
   id: string;
   participants: string[];
-  participantNames: { [key: string]: string };
-  participantPhotos: { [key: string]: string };
-  lastMessage: string;
-  lastMessageTime: any;
-  unreadCount: { [key: string]: number };
+  participant_names: { [key: string]: string };
+  participant_photos: { [key: string]: string };
+  last_message: string;
+  last_message_time: any;
+  unread_count: { [key: string]: number };
 }
 
 interface UserPhotoCache {
   [userId: string]: string | null;
+}
+
+interface UserNameCache {
+  [userId: string]: string;
 }
 
 export default function MessagesScreen() {
@@ -36,93 +40,106 @@ export default function MessagesScreen() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [userPhotos, setUserPhotos] = useState<UserPhotoCache>({});
+  const [userNames, setUserNames] = useState<UserNameCache>({});
 
+  // 📄 Kullanıcı fotoğrafı ve adı güncelleme
+  const loadUserInfo = useCallback(async (convos: Conversation[]) => {
+    try {
+      const photos: UserPhotoCache = {};
+      const names: UserNameCache = {};
+      const missingIds = new Set<string>();
+
+      // Önce conversation'daki bilgileri kullan
+      convos.forEach((convo) => {
+        convo.participants.forEach((pid) => {
+          if (convo.participant_photos?.[pid]) {
+            photos[pid] = convo.participant_photos[pid];
+          }
+          if (convo.participant_names?.[pid]) {
+            names[pid] = convo.participant_names[pid];
+          }
+          // Eksik bilgileri users tablosundan çekeceğiz
+          if (!convo.participant_photos?.[pid] || !convo.participant_names?.[pid]) {
+            missingIds.add(pid);
+          }
+        });
+      });
+
+      // Eksik kullanıcı bilgilerini veritabanından çek
+      if (missingIds.size > 0) {
+        const { data, error } = await supabase
+          .from('users')
+          .select('id, name, photo_url')
+          .in('id', Array.from(missingIds));
+
+        if (!error && data) {
+          data.forEach((u) => {
+            // Sadece name kolonunu kullan
+            names[u.id] = u.name || 'Kullanıcı';
+            photos[u.id] = u.photo_url || null;
+          });
+        }
+      }
+
+      setUserPhotos(photos);
+      setUserNames(names);
+    } catch (err) {
+      console.error('User info load error:', err);
+    }
+  }, []);
+
+  // 🧩 Sohbetleri yükle
+  const loadConversations = useCallback(async () => {
+    if (!user) return;
+    try {
+      const convos = await db.conversations.getByUserId(user.id);
+      setConversations(convos || []);
+      await loadUserInfo(convos || []);
+      setLoading(false);
+    } catch (error) {
+      console.error('Conversations fetch error:', error);
+      setLoading(false);
+    }
+  }, [user, loadUserInfo]);
+
+  // ✅ useFocusEffect ile her sayfa açıldığında yükle
+  useFocusEffect(
+    useCallback(() => {
+      if (!user) {
+        setLoading(false);
+        return;
+      }
+
+      loadConversations();
+    }, [user, loadConversations])
+  );
+
+  // 🔔 Real-time listener
   useEffect(() => {
     if (!user) {
       setLoading(false);
       return;
     }
 
-    const q = query(
-      collection(db, 'conversations'),
-      or(
-        where('participants', 'array-contains', user.uid)
-      )
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const convos: Conversation[] = [];
-      
-      snapshot.forEach((doc) => {
-        const data = doc.data();
-        convos.push({
-          id: doc.id,
-          participants: data.participants || [],
-          participantNames: data.participantNames || {},
-          participantPhotos: data.participantPhotos || {},
-          lastMessage: data.lastMessage || '',
-          lastMessageTime: data.lastMessageTime,
-          unreadCount: data.unreadCount || {}
-        });
-      });
-
-      convos.sort((a, b) => {
-        const timeA = a.lastMessageTime?.toMillis?.() || 0;
-        const timeB = b.lastMessageTime?.toMillis?.() || 0;
-        return timeB - timeA;
-      });
-
-      setConversations(convos);
-      setLoading(false);
-
-      loadUserPhotos(convos);
+    const channel = subscriptions.onConversationsChange(user.id, async () => {
+      await loadConversations();
     });
 
-    return () => unsubscribe();
-  }, [user]);
+    return () => {
+      subscriptions.unsubscribe(channel);
+    };
+  }, [user, loadConversations]);
 
-  const loadUserPhotos = async (convos: Conversation[]) => {
-    const userIds = new Set<string>();
-    
-    convos.forEach(convo => {
-      convo.participants.forEach(participantId => {
-        if (participantId !== user?.uid) {
-          userIds.add(participantId);
-        }
-      });
-    });
-
-    const photoCache: UserPhotoCache = {};
-    
-    await Promise.all(
-      Array.from(userIds).map(async (userId) => {
-        try {
-          const userDoc = await getDoc(doc(db, 'users', userId));
-          if (userDoc.exists()) {
-            const userData = userDoc.data();
-            photoCache[userId] = userData.photoURL || null;
-          }
-        } catch (error) {
-          console.error(`Kullanıcı ${userId} fotoğrafı yüklenemedi:`, error);
-        }
-      })
-    );
-
-    setUserPhotos(photoCache);
-  };
-
-  const getOtherUserId = (participants: string[]) => {
-    return participants.find(id => id !== user?.uid) || '';
-  };
+  const getOtherUserId = (participants: string[]) =>
+    participants.find((id) => id !== user?.id) || '';
 
   const formatTime = (timestamp: any) => {
     if (!timestamp) return '';
-    
-    const date = timestamp.toDate();
+    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
     const now = new Date();
     const diff = now.getTime() - date.getTime();
     const hours = diff / (1000 * 60 * 60);
-    
+
     if (hours < 24) {
       return date.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
     } else if (hours < 48) {
@@ -302,17 +319,14 @@ export default function MessagesScreen() {
 
   if (!user) {
     return (
-      <View style={styles.container} testID="messages-screen">
-        <View style={styles.authContainer} testID="auth-container">
+      <View style={styles.container}>
+        <View style={styles.authContainer}>
           <Ionicons name="chatbubbles" size={64} color={colors.primary} />
-          <Text style={styles.authTitle} testID="auth-title">Mesajlar</Text>
-          <Text style={styles.authText} testID="auth-text">
-            Mesajlaşmak için giriş yapmalısınız
-          </Text>
-          <TouchableOpacity 
+          <Text style={styles.authTitle}>Mesajlar</Text>
+          <Text style={styles.authText}>Mesajlaşmak için giriş yapmalısınız</Text>
+          <TouchableOpacity
             style={styles.authButton}
             onPress={() => router.push('/auth/login')}
-            testID="login-button"
           >
             <Text style={styles.authButtonText}>Giriş Yap</Text>
           </TouchableOpacity>
@@ -323,88 +337,68 @@ export default function MessagesScreen() {
 
   if (loading) {
     return (
-      <View style={styles.centered} testID="loading-container">
-        <ActivityIndicator size="large" color={colors.primary} testID="loading-indicator" />
+      <View style={styles.centered}>
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
 
   return (
-    <View style={styles.container} testID="messages-screen">
+    <View style={styles.container}>
       {/* Header */}
-      <View style={styles.header} testID="messages-header">
-        <Text style={styles.headerTitle} testID="header-title">Mesajlar</Text>
-        <TouchableOpacity 
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Mesajlar</Text>
+        <TouchableOpacity
           style={styles.searchButton}
           onPress={() => router.push('/users/search')}
-          testID="search-button"
         >
           <Ionicons name="person-add" size={24} color={colors.primary} />
         </TouchableOpacity>
       </View>
 
-      {/* Konuşma Listesi */}
+      {/* Liste */}
       <FlatList
-        testID="conversations-list"
         data={conversations}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => {
           const otherUserId = getOtherUserId(item.participants);
-          const otherUserName = item.participantNames[otherUserId] || 'Kullanıcı';
-          
-          const otherUserPhoto = userPhotos[otherUserId] !== undefined 
-            ? userPhotos[otherUserId]
-            : item.participantPhotos[otherUserId];
-            
-          const unreadCount = item.unreadCount[user.uid] || 0;
+          const otherUserName = userNames[otherUserId] || item.participant_names[otherUserId] || 'Kullanıcı';
+          const otherUserPhoto = userPhotos[otherUserId] || item.participant_photos?.[otherUserId] || null;
+          const unreadCount = item.unread_count[user.id] || 0;
 
           return (
             <TouchableOpacity
               style={styles.conversationItem}
               onPress={() => router.push(`/chat/${item.id}`)}
-              testID={`conversation-item-${item.id}`}
             >
-              {/* Avatar */}
               {otherUserPhoto ? (
-                <Image 
-                  source={{ uri: otherUserPhoto }} 
-                  style={styles.avatar}
-                  testID={`avatar-image-${item.id}`}
-                />
+                <Image source={{ uri: otherUserPhoto }} style={styles.avatar} />
               ) : (
-                <View style={styles.avatarPlaceholder} testID={`avatar-placeholder-${item.id}`}>
-                  <Text style={styles.avatarText} testID={`avatar-text-${item.id}`}>
+                <View style={styles.avatarPlaceholder}>
+                  <Text style={styles.avatarText}>
                     {otherUserName.charAt(0).toUpperCase()}
                   </Text>
                 </View>
               )}
 
-              {/* Konuşma Bilgileri */}
               <View style={styles.conversationContent}>
                 <View style={styles.conversationHeader}>
-                  <Text style={styles.userName} testID={`user-name-${item.id}`}>
-                    {otherUserName}
-                  </Text>
-                  <Text style={styles.time} testID={`time-${item.id}`}>
-                    {formatTime(item.lastMessageTime)}
-                  </Text>
+                  <Text style={styles.userName}>{otherUserName}</Text>
+                  <Text style={styles.time}>{formatTime(item.last_message_time)}</Text>
                 </View>
                 <View style={styles.messageRow}>
-                  <Text 
+                  <Text
                     style={[
                       styles.lastMessage,
-                      unreadCount > 0 && styles.unreadMessage
+                      unreadCount > 0 && styles.unreadMessage,
                     ]}
                     numberOfLines={1}
-                    testID={`last-message-${item.id}`}
                   >
-                    {item.lastMessage || 'Yeni konuşma'}
+                    {item.last_message || 'Yeni konuşma'}
                   </Text>
                   {unreadCount > 0 && (
-                    <View style={styles.unreadBadge} testID={`unread-badge-${item.id}`}>
-                      <Text style={styles.unreadText} testID={`unread-count-${item.id}`}>
-                        {unreadCount}
-                      </Text>
+                    <View style={styles.unreadBadge}>
+                      <Text style={styles.unreadText}>{unreadCount}</Text>
                     </View>
                   )}
                 </View>
@@ -413,16 +407,15 @@ export default function MessagesScreen() {
           );
         }}
         ListEmptyComponent={
-          <View style={styles.emptyContainer} testID="empty-state">
+          <View style={styles.emptyContainer}>
             <Ionicons name="chatbubbles-outline" size={64} color={colors.border} />
-            <Text style={styles.emptyTitle} testID="empty-title">Henüz mesajınız yok</Text>
-            <Text style={styles.emptyText} testID="empty-text">
+            <Text style={styles.emptyTitle}>Henüz mesajınız yok</Text>
+            <Text style={styles.emptyText}>
               Kullanıcı ara butonuna tıklayarak yeni bir konuşma başlatabilirsiniz
             </Text>
             <TouchableOpacity
               style={styles.startChatButton}
               onPress={() => router.push('/users/search')}
-              testID="start-chat-button"
             >
               <Ionicons name="person-add" size={20} color={colors.card} />
               <Text style={styles.startChatText}>Kullanıcı Ara</Text>
